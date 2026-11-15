@@ -468,9 +468,11 @@ export const PROVIDER_MODEL_IDS: Record<string, string[]> = {
     "o1-mini"
   ],
   "anthropic": [
-    "claude-sonnet-4-20250514",
-    "claude-opus-4-20250514",
-    "claude-3-5-sonnet-20241022"
+    "claude-fable-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-opus-4-8",
+    "claude-haiku-4-5"
   ],
   "gemini": [
     "gemini-4-argon",

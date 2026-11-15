@@ -112,10 +112,11 @@ export async function listModels(apiBaseUrl: string, apiKey: string, anthropic?:
     : apiKey
     ? { authorization: `Bearer ${apiKey}` }
     : {};
-  const r = await fetchWithConnectionTimeout(`${normalizeBaseUrl(apiBaseUrl)}/models`, { headers, signal: options?.signal });
+  // Anthropic's Models API pages at 20 by default; 1000 is its documented maximum.
+  const modelsUrl = `${normalizeBaseUrl(apiBaseUrl)}/models${useAnthropic ? "?limit=1000" : ""}`;
+  const r = await fetchWithConnectionTimeout(modelsUrl, { headers, signal: options?.signal });
   if (!r.ok) {
-    // Anthropic's official API does not expose a /models endpoint (404 expected).
-    // MIMO (xiaomimimo.com) may also 404 on /models depending on the plan/region.
+    // Anthropic-compatible proxies and MIMO (xiaomimimo.com) may 404 on /models.
     // Fall back to the hardcoded catalog so these providers still work.
     if ([404, 405].includes(r.status) && (useAnthropic || /xiaomimimo\.com/i.test(apiBaseUrl))) {
       options?.onVerification?.(false);

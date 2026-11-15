@@ -35,6 +35,24 @@ describe("provider base URLs", () => {
   });
 });
 
+describe("Anthropic API key model listing", () => {
+  it("lists every page-1000 model with first-party API key headers only", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "claude-opus-5" }] })));
+    vi.stubGlobal("fetch", fetch);
+    expect(await listModels("https://api.anthropic.com/v1", "fixture-key")).toEqual([{ id: "claude-opus-5" }]);
+    expect(fetch).toHaveBeenCalledWith("https://api.anthropic.com/v1/models?limit=1000", {
+      headers: { "x-api-key": "fixture-key", "anthropic-version": "2023-06-01" }, signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("falls back to current, non-retired catalog models when /models is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    const ids = (await listModels("https://proxy.example/v1", "fixture-key", true)).map(model => model.id);
+    expect(ids).toEqual(expect.arrayContaining(["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]));
+    expect(ids).not.toContain("claude-3-5-sonnet-20241022");
+  });
+});
+
 // --- kindMatches ---
 
 describe("kindMatches", () => {

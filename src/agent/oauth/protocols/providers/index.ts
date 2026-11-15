@@ -540,7 +540,7 @@ export const PROVIDERS: Record<string, ProviderTransport> = {
         "baseUrl": "https://api.anthropic.com/v1/messages",
         "headers": {
             "anthropic-version": "2023-06-01",
-            "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
+            "Anthropic-Beta": "interleaved-thinking-2025-05-14"
         }
     },
     "gemini": {
@@ -5004,18 +5004,11 @@ export const PROVIDER_MODELS: Record<string, ProviderModel[]> = {
         }
     ],
     "anthropic": [
-        {
-            "id": "claude-sonnet-4-20250514",
-            "name": "Claude Sonnet 4"
-        },
-        {
-            "id": "claude-opus-4-20250514",
-            "name": "Claude Opus 4"
-        },
-        {
-            "id": "claude-3-5-sonnet-20241022",
-            "name": "Claude 3.5 Sonnet"
-        }
+        { "id": "claude-fable-5", "name": "Claude Fable 5" },
+        { "id": "claude-opus-5", "name": "Claude Opus 5" },
+        { "id": "claude-sonnet-5", "name": "Claude Sonnet 5" },
+        { "id": "claude-opus-4-8", "name": "Claude Opus 4.8" },
+        { "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5" }
     ],
     "gemini": [
         {

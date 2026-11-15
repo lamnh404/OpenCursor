@@ -110,21 +110,6 @@ export const PROVIDER_MODELS: ProviderModelSpec[] = [
     "kind": "alicode"
   },
   {
-    "id": "claude-sonnet-4-20250514",
-    "name": "Claude Sonnet 4",
-    "kind": "anthropic"
-  },
-  {
-    "id": "claude-opus-4-20250514",
-    "name": "Claude Opus 4",
-    "kind": "anthropic"
-  },
-  {
-    "id": "claude-3-5-sonnet-20241022",
-    "name": "Claude 3.5 Sonnet",
-    "kind": "anthropic"
-  },
-  {
     "id": "gemini-4-argon-high",
     "name": "Gemini 4 Argon (High)",
     "kind": "antigravity",
