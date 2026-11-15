@@ -38,6 +38,8 @@ export interface Conversation {
   /** Tokens consumed by the last run (drives the composer context ring). */
   usedTokens?: number;
   archivedAt?: number;
+  /** Pinned conversations sort ahead of the recency order in the history panel. */
+  pinnedAt?: number;
   forkedFrom?: string;
   goal?: ConversationGoal;
   queue?: QueuedMessage[];
@@ -56,6 +58,7 @@ export interface ConversationSummary {
   title: string;
   updatedAt: number;
   archivedAt?: number;
+  pinnedAt?: number;
   excerpt?: string;
   allowModelOutputEdits?: boolean;
 }
@@ -127,7 +130,7 @@ type StoreState = {
 // A single synchronous view per workspace prevents competing live sessions from
 // losing each other's changes while VS Code asynchronously flushes its Memento.
 const sharedStates = new WeakMap<vscode.Memento, StoreState>();
-type ConversationPatch = Partial<Pick<Conversation, "steps" | "contextState" | "turns" | "title" | "personaId" | "model" | "mode" | "usedTokens" | "archivedAt" | "goal" | "queue" | "reviewTarget" | "runEvents" | "steeringQueue" | "steering" | "workspaceRoot" | "allowModelOutputEdits">>;
+type ConversationPatch = Partial<Pick<Conversation, "steps" | "contextState" | "turns" | "title" | "personaId" | "model" | "mode" | "usedTokens" | "archivedAt" | "pinnedAt" | "goal" | "queue" | "reviewTarget" | "runEvents" | "steeringQueue" | "steering" | "workspaceRoot" | "allowModelOutputEdits">>;
 const BODY_KEYS = ["turns", "steps", "contextState", "runEvents"] as const;
 type StoredConversation = Conversation & { bodyInFile?: true; openRun?: true };
 
@@ -354,8 +357,8 @@ export class ConversationStore {
         return { ...c, matches: titleMatch || match >= 0, excerpt: query && match >= 0 ? transcript.slice(Math.max(0, match - 45), match + 160).replace(/\s+/g, " ") : undefined };
       })
       .filter((c) => c.matches)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, archivedAt: c.archivedAt, excerpt: c.excerpt, ...(c.allowModelOutputEdits ? { allowModelOutputEdits: true } : {}) }));
+      .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0) || b.updatedAt - a.updatedAt)
+      .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, archivedAt: c.archivedAt, pinnedAt: c.pinnedAt, excerpt: c.excerpt, ...(c.allowModelOutputEdits ? { allowModelOutputEdits: true } : {}) }));
     if (query) this.trimLoaded();
     return result;
   }
@@ -445,7 +448,7 @@ export class ConversationStore {
     if (changes.runEvents) changes.runEvents = capRunEvents(changes.runEvents);
     let next: Conversation = { ...current, ...structuredClone(changes), updatedAt: Date.now() };
     let bodyChanged = changed.some((key) => (BODY_KEYS as readonly string[]).includes(key));
-    if (changes.archivedAt && !current.archivedAt) { next = trimArchivedConversation(next); bodyChanged = true; }
+    if (changes.archivedAt && !current.archivedAt) { next = { ...trimArchivedConversation(next), pinnedAt: undefined }; bodyChanged = true; }
     list[i] = next;
     this.cache.recent.set(id, ++this.cache.tick);
     return this.persist(list, bodyChanged ? [id] : []);
@@ -566,6 +569,7 @@ export class ConversationStore {
       drafts: structuredClone(stored?.drafts ?? {}),
       ...(stored?.models ? { models: structuredClone(stored.models) } : {}),
       ...(stored?.modes ? { modes: structuredClone(stored.modes) } : {}),
+      ...(stored?.historyPanelOpen ? { historyPanelOpen: true } : {}),
     };
   }
 
@@ -578,6 +582,7 @@ export class ConversationStore {
       drafts: current?.drafts ?? {},
       ...(current?.models ? { models: current.models } : {}),
       ...(current?.modes ? { modes: current.modes } : {}),
+      ...(current?.historyPanelOpen ? { historyPanelOpen: true } : {}),
       ...structuredClone(patch),
     };
     // Drafts arrive per keystroke: coalesce them into one storage write.

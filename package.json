@@ -2,7 +2,7 @@
 	"name": "ocursor",
 	"displayName": "OpenCursor Agent",
 	"description": "AI coding agent chat inside VS Code",
-	"version": "0.2.4",
+	"version": "0.2.5",
 	"publisher": "pkrd",
 	"license": "MIT",
 	"icon": "media/icon.png",
@@ -212,6 +212,16 @@
 						"type": "boolean",
 						"default": true,
 						"description": "Show Implement with OpenCursor above TODO comments."
+					},
+					"ocursor.historyPanel.side": {
+						"type": "string",
+						"enum": [
+							"auto",
+							"left",
+							"right"
+						],
+						"default": "auto",
+						"description": "Edge of the chat view where the docked history panel opens. Auto follows workbench.sideBar.location; set left or right if the view lives in the secondary sidebar."
 					},
 					"ocursor.executionMode": {
 						"type": "string",

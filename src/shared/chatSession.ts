@@ -49,6 +49,8 @@ export interface ChatWorkspaceState {
   drafts: Record<string, { text: string; attachments: Attachment[] }>;
   models?: Record<string, string>;
   modes?: Record<string, Mode>;
+  /** Docked history panel visibility; absent means closed. */
+  historyPanelOpen?: boolean;
 }
 
 export type ReviewTarget =

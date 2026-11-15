@@ -17,7 +17,7 @@ import { MarkdownView } from "../shared/MarkdownView";
 import { vscode } from "../shared/vscode";
 import { Composer, KIND_SVG, applyFileIconTo, type ComposerDraft } from "./components/Composer";
 import { ToolCard, TaskActivityContext, ModelPickerContext, InlineModelPicker, isReadonlySubagent, TimeoutBadge, ToolTimeoutWatch, isToolCountdownActive, useLiveDisclosure } from "./components/Tool";
-import { History } from "./components/History";
+import { HistoryPanel } from "./components/History";
 import { MessageActions } from "./components/MessageActions";
 import { WorkingSection } from "./components/WorkingSection";
 import { splitWork, hasLiveWork } from "./workPresentation";
@@ -27,7 +27,7 @@ import { StaggerReveal, TextSwap } from "../shared/TextTransitions";
 import { AnimatedDisclosure } from "../shared/AnimatedDisclosure";
 import { setMotionPreference, type MotionPreference } from "../shared/motionPreference";
 import { WorkflowDialog, GoalBanner, VerificationCard } from "./components/Workflow";
-import type { AgentEvent, ApprovalMode, ApprovalPolicy, ApprovalRequestInfo, AssistantBlock, AssistantTurn, Attachment, ConversationSummary, ErrorBlock, InMessage, MentionItem, Mode, ModelDef, ModelOption, OutMessage, PendingChangeInfo, PersonaInfo, TeamInfo, ThinkingBlock, ToolBlock, Turn, UserTurn } from "./types";
+import type { AgentEvent, ApprovalMode, ApprovalPolicy, ApprovalRequestInfo, AssistantBlock, AssistantTurn, Attachment, ConversationSummary, ErrorBlock, HistoryPanelSide, InMessage, MentionItem, Mode, ModelDef, ModelOption, OutMessage, PendingChangeInfo, PersonaInfo, TeamInfo, ThinkingBlock, ToolBlock, Turn, UserTurn } from "./types";
 import { applyEvent, applyToBlocks, closeTrailingThinking, forceSettleOpenWork, parsePartialArgs, renderMentionTokens } from "./types";
 
 function post(msg: OutMessage) {
@@ -1191,6 +1191,13 @@ export function App() {
     if (workspaceReady.current) post({ type: "updateChatWorkspace", state: { openTabs } });
   }, [openTabs]);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const toggleHistory = React.useCallback((open?: boolean) => {
+    setHistoryOpen((current) => {
+      const next = open ?? !current;
+      if (workspaceReady.current && next !== current) post({ type: "updateChatWorkspace", state: { historyPanelOpen: next } });
+      return next;
+    });
+  }, []);
   const [moreOpen, setMoreOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -1207,8 +1214,9 @@ export function App() {
   const [teams, setTeams] = React.useState<TeamInfo[]>([]);
   const [activeTeamIds, setActiveTeamIds] = React.useState<string[]>([]);
   const [refineModel, setRefineModel] = React.useState("");
-  const [uiPrefs, setUiPrefs] = React.useState<{ chatTextSize: string; submitWithCtrlEnter: boolean; maxTabCount: number; completionSound: boolean; perTabDrafts: boolean; motion?: MotionPreference }>({ chatTextSize: "default", submitWithCtrlEnter: false, maxTabCount: 0, completionSound: false, perTabDrafts: true, motion: "full" });
+  const [uiPrefs, setUiPrefs] = React.useState<{ chatTextSize: string; submitWithCtrlEnter: boolean; maxTabCount: number; completionSound: boolean; perTabDrafts: boolean; motion?: MotionPreference; historyPanelSide?: HistoryPanelSide }>({ chatTextSize: "default", submitWithCtrlEnter: false, maxTabCount: 0, completionSound: false, perTabDrafts: true, motion: "full" });
   React.useEffect(() => { setMotionPreference(uiPrefs.motion); }, [uiPrefs.motion]);
+  const historySide = uiPrefs.historyPanelSide ?? "left";
   const uiPrefsRef = React.useRef(uiPrefs);
   React.useEffect(() => { uiPrefsRef.current = uiPrefs; }, [uiPrefs]);
   const draftKey = uiPrefs.perTabDrafts !== false ? (activeId ?? "") : SHARED_DRAFT;
@@ -1630,6 +1638,7 @@ export function App() {
             }
             draftsRef.current = loadedDrafts;
             setOpenTabs(initialTabs);
+            setHistoryOpen(msg.workspaceState.historyPanelOpen === true);
             setDraftTick();
           } else if (msg.activeId) setOpenTabs((t) => t.includes(msg.activeId!) ? t : [...t, msg.activeId!]);
           workspaceReady.current = true;
@@ -1761,7 +1770,6 @@ export function App() {
           setSelectedModel(nextModel);
           setMode(nextMode);
           setActiveId(msg.activeId);
-          setHistoryOpen(false);
           if (msg.personaId) setPersonaId(msg.personaId);
           setOpenTabs((t) => {
             let next = t;
@@ -2232,8 +2240,8 @@ export function App() {
           <button className="hicon" title="New Chat" onClick={() => post({ type: "newConversation" })}>
             <Icon name="plus" size={14} />
           </button>
-          <button className="hicon" title="History" onClick={() => setHistoryOpen(true)}>
-            <Icon name="history" size={14} />
+          <button className={"hicon" + (historyOpen ? " on" : "")} title={historyOpen ? "Hide history" : "Show history"} aria-label={historyOpen ? "Hide history" : "Show history"} aria-pressed={historyOpen} onClick={() => toggleHistory()}>
+            <Icon name={historySide === "right" ? "panelRight" : "panelLeft"} size={14} />
           </button>
           <button className="hicon" title="Settings" onClick={() => post({ type: "openSettings" })}>
             <Icon name="settings" size={14} />
@@ -2276,19 +2284,23 @@ export function App() {
         </div>
       </div>
 
+      <div className="chat-shell" data-history-side={historySide}>
       {historyOpen && (
-        <History
+        <HistoryPanel
           list={conversations}
           activeId={activeId}
+          side={historySide}
           onSelect={(id) => post({ type: "selectConversation", id })}
           onDelete={(id) => post({ type: "deleteConversation", id })}
+          onPin={(id, pinned) => post({ type: "pinConversation", id, pinned })}
           onArchive={(id, archived) => post({ type: "archiveConversation", id, archived })}
           onFork={(id) => post({ type: "forkConversation", id })}
           onSearch={(query, archived, requestId) => post({ type: "searchConversations", query, archived, requestId })}
           results={historyResults}
-          onClose={() => setHistoryOpen(false)}
+          onClose={() => toggleHistory(false)}
         />
       )}
+      <div className="chat-column">
       {activeId && goals[activeId] && <GoalBanner goal={goals[activeId]} onStatus={(status) => post({ type: "setGoalStatus", convId: activeId, status })} />}
       {workspaceRoot && <div className="worktree-banner" title={workspaceRoot}><Icon name="gitBranch" size={12} /><span>Isolated worktree · {workspaceRoot.split(/[\\/]/).pop()}</span><button className="btn-ghost" onClick={() => post({ type: "openMention", kind: "folder", path: workspaceRoot })}>Show folder</button></div>}
       {workflowDialog && <WorkflowDialog kind={workflowDialog} onClose={() => setWorkflowDialog(null)}
@@ -2509,6 +2521,8 @@ export function App() {
           onTogglePause={composerOnTogglePause}
           submitWithCtrlEnter={uiPrefs.submitWithCtrlEnter}
         />
+      </div>
+      </div>
       </div>
 
       <ImagePreview images={imagePreview?.images ?? []} activeId={imagePreview?.activeId ?? null} onClose={() => setImagePreview(null)} />

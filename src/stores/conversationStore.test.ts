@@ -90,6 +90,30 @@ it("forks a stable snapshot without inheriting active goals or queued side effec
   expect(store.list({ archived: true, query: "Source request" }).map((c) => c.id)).toEqual([original.id]);
 });
 
+it("lists pinned conversations first and drops the pin when archiving", async () => {
+  const store = new ConversationStore({ workspaceState: storage(), globalState: storage() } as any);
+  let now = 1_000;
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  try {
+    const older = await store.create();
+    await store.update(older.id, { title: "Older" });
+    now = 2_000;
+    const newer = await store.create();
+    await store.update(newer.id, { title: "Newer" });
+    expect(store.list().map((c) => c.id)).toEqual([newer.id, older.id]);
+    await store.update(older.id, { pinnedAt: 10 });
+    expect(store.list().map((c) => [c.id, !!c.pinnedAt])).toEqual([[older.id, true], [newer.id, false]]);
+    expect(store.list({ query: "older" }).map((c) => c.id)).toEqual([older.id]);
+    await store.update(older.id, { archivedAt: 20 });
+    expect(store.list({ archived: true })[0]).toMatchObject({ id: older.id, pinnedAt: undefined });
+    now = 3_000;
+    await store.update(older.id, { archivedAt: undefined });
+    expect(store.list({ archived: false }).map((c) => [c.id, c.pinnedAt])).toEqual([[older.id, undefined], [newer.id, undefined]]);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
 it("retains unknown running requests as interrupted instead of replaying them after restart", async () => {
   const store = new ConversationStore({ workspaceState: storage(), globalState: storage() } as any);
   const conversation = await store.create();

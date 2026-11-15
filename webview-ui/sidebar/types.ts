@@ -47,6 +47,7 @@ export interface ConversationSummary {
   title: string;
   updatedAt: number;
   archivedAt?: number;
+  pinnedAt?: number;
   excerpt?: string;
   /** Per-conversation opt-in to editing assistant text and reasoning. */
   allowModelOutputEdits?: boolean;
@@ -109,7 +110,8 @@ export interface PendingChangeInfo {
 }
 
 // Extension -> webview
-export type UiPrefs = { chatTextSize: string; motion?: "full" | "system" | "reduced"; submitWithCtrlEnter: boolean; maxTabCount: number; completionSound: boolean; perTabDrafts: boolean };
+export type HistoryPanelSide = "left" | "right";
+export type UiPrefs = { chatTextSize: string; motion?: "full" | "system" | "reduced"; submitWithCtrlEnter: boolean; maxTabCount: number; completionSound: boolean; perTabDrafts: boolean; historyPanelSide?: HistoryPanelSide };
 /** A subagent team as shown in the composer's Project-mode picker. */
 export type TeamInfo = { id: string; name: string; description: string; members: string[] };
 export type InMessage =
@@ -171,6 +173,7 @@ export type OutMessage =
   | { type: "steerMessage"; convId: string; text: string }
   | { type: "forkConversation"; id: string }
   | { type: "archiveConversation"; id: string; archived: boolean }
+  | { type: "pinConversation"; id: string; pinned: boolean }
   | { type: "searchConversations"; query: string; archived: boolean; requestId: number }
   | { type: "setGoal"; convId?: string; objective: string; tokenBudget?: number }
   | { type: "setGoalStatus"; convId: string; status: GoalStatus }

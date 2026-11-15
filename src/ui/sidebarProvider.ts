@@ -55,6 +55,17 @@ function isWebUrl(value: unknown): value is string {
   try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; }
 }
 
+/**
+ * Edge of the chat view the docked history panel opens on. VS Code does not reveal whether
+ * a view lives in the secondary sidebar, so `auto` follows the primary sidebar location and
+ * users can override it with `ocursor.historyPanel.side`.
+ */
+export function historyPanelSide(): "left" | "right" {
+  const override = vscode.workspace.getConfiguration("ocursor").get<string>("historyPanel.side", "auto");
+  if (override === "left" || override === "right") return override;
+  return vscode.workspace.getConfiguration("workbench").get<string>("sideBar.location", "left") === "right" ? "right" : "left";
+}
+
 /** Attach each model's selectable thinking levels so in-chat retry pickers only offer valid ones. */
 function withThinkingLevels(list: ModelDef[]): (ModelDef & { thinkingLevels?: string[] })[] {
   return list.map((m) => {
@@ -571,6 +582,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Re-resolve file icons when the user switches icon themes.
     const iconSub = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("workbench.iconTheme")) invalidateFileIconCache();
+      // The docked history panel follows the sidebar's edge of the window.
+      if (e.affectsConfiguration("workbench.sideBar.location") || e.affectsConfiguration("ocursor.historyPanel.side")) this._sendConfigState();
     });
     webviewView.onDidDispose(() => {
       if (this._view === webviewView) { this._view = undefined; this._webviewReady = false; }
@@ -621,6 +634,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           if (this._sessions.has(data.id)) throw new Error("Stop the active run before archiving this conversation.");
           await this._store.update(data.id, { archivedAt: data.archived === false ? undefined : Date.now() });
           if (this._activeId === data.id && data.archived !== false) await this._newConversation();
+          this._sendConversations();
+          break;
+        case "pinConversation":
+          await this._store.update(data.id, { pinnedAt: data.pinned === false ? undefined : Date.now() });
           this._sendConversations();
           break;
         case "searchConversations":
@@ -1238,6 +1255,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         maxTabCount: features.maxTabCount ?? 0,
         completionSound: features.completionSound === true,
         perTabDrafts: features.perTabDrafts !== false,
+        historyPanelSide: historyPanelSide(),
       },
     });
     this._sendConversations();
@@ -1435,6 +1453,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         maxTabCount: features.maxTabCount ?? 0,
         completionSound: features.completionSound === true,
         perTabDrafts: features.perTabDrafts !== false,
+        historyPanelSide: historyPanelSide(),
       },
     });
   }

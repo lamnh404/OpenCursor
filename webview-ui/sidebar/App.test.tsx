@@ -41,6 +41,40 @@ function queuedMenu(index = 0) {
   return document.querySelector<HTMLElement>('[role="menu"]:not([aria-hidden="true"])')!;
 }
 
+describe("docked history panel", () => {
+  const list = [{ id: "A", title: "Thread A", updatedAt: 2 }, { id: "B", title: "Thread B", updatedAt: 1, pinnedAt: 5 }];
+  const toggle = () => container.querySelector<HTMLButtonElement>('button[aria-pressed][title$="history"]')!;
+  const panel = () => container.querySelector<HTMLElement>(".history-panel");
+
+  it("restores the saved open state, docks on the sidebar edge and persists toggles", () => {
+    initial({ uiPrefs: { motion: "reduced", historyPanelSide: "right" }, workspaceState: { openTabs: ["A"], drafts: {}, historyPanelOpen: true } });
+    message({ type: "conversations", list, activeId: "A", runningConvIds: [] });
+    expect(panel()?.dataset.side).toBe("right");
+    expect(toggle().getAttribute("aria-pressed")).toBe("true");
+    expect([...container.querySelectorAll(".history-group-label")].map((el) => el.textContent)).toEqual(["Pinned", "Earlier"]);
+    vi.mocked(vscode.postMessage).mockClear();
+    act(() => toggle().click());
+    expect(panel()).toBeNull();
+    expect(vscode.postMessage).toHaveBeenCalledWith({ type: "updateChatWorkspace", state: { historyPanelOpen: false } });
+    act(() => toggle().click());
+    expect(panel()).not.toBeNull();
+    expect(vscode.postMessage).toHaveBeenCalledWith({ type: "updateChatWorkspace", state: { historyPanelOpen: true } });
+  });
+
+  it("stays open while switching threads and pins through the host", () => {
+    initial({ workspaceState: { openTabs: ["A"], drafts: {}, historyPanelOpen: true } });
+    message({ type: "conversations", list, activeId: "A", runningConvIds: [] });
+    expect(panel()?.dataset.side).toBe("left");
+    vi.mocked(vscode.postMessage).mockClear();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Open Thread B"]')!.click());
+    expect(vscode.postMessage).toHaveBeenCalledWith({ type: "selectConversation", id: "B" });
+    message({ type: "loadConversation", activeId: "B", turns: [], running: false });
+    expect(panel()).not.toBeNull();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Pin Thread A"]')!.click());
+    expect(vscode.postMessage).toHaveBeenCalledWith({ type: "pinConversation", id: "A", pinned: true });
+  });
+});
+
 describe("transcript resource usage", () => {
   const paint = () => act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
 
