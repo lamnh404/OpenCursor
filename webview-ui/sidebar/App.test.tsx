@@ -75,6 +75,66 @@ describe("docked history panel", () => {
   });
 });
 
+describe("per-tab reading position", () => {
+  const GROUP = 500, VIEW = 400;
+  const turnsFor = (tag: string) => Array.from({ length: 6 }, (_, i) => [
+    { role: "user", text: `${tag} question ${i}` },
+    { role: "assistant", blocks: [{ kind: "text", text: `${tag} answer ${i}` }] },
+  ]).flat();
+  const chat = () => container.querySelector<HTMLDivElement>(".chat-messages")!;
+  const frames = (n = 16) => act(async () => { for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r())); });
+  const rect = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON() {} }) as DOMRect;
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("chat-messages") ? this.querySelectorAll(".chat-turn-group").length * GROUP : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("chat-messages") ? VIEW : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("chat-messages")) return rect(0, VIEW);
+      if (this.classList.contains("chat-turn-group")) {
+        const parent = this.parentElement!;
+        const index = [...parent.children].filter((c) => c.classList.contains("chat-turn-group")).indexOf(this);
+        return rect(index * GROUP - parent.scrollTop, GROUP);
+      }
+      return rect(0, 0);
+    });
+  });
+
+  it("returns to where the user was reading instead of jumping to the bottom", async () => {
+    initial({ turns: turnsFor("A"), runningConvIds: [] });
+    await frames();
+    expect(chat().scrollTop).toBe(3000);
+    act(() => {
+      chat().dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      chat().scrollTop = 1234;
+      chat().dispatchEvent(new Event("scroll"));
+    });
+    await frames(2);
+
+    message({ type: "loadConversation", activeId: "B", turns: turnsFor("B"), running: false });
+    await frames();
+    expect(chat().scrollTop).toBe(3000);
+
+    message({ type: "loadConversation", activeId: "A", turns: turnsFor("A"), running: false });
+    await frames();
+    expect(chat().scrollTop).toBe(1234);
+  });
+
+  it("still lands at the bottom for a tab the user was following", async () => {
+    initial({ turns: turnsFor("A"), runningConvIds: [] });
+    await frames();
+    act(() => { chat().dispatchEvent(new Event("scroll")); });
+    await frames(2);
+    message({ type: "loadConversation", activeId: "B", turns: turnsFor("B"), running: false });
+    await frames();
+    message({ type: "loadConversation", activeId: "A", turns: turnsFor("A"), running: false });
+    await frames();
+    expect(chat().scrollTop).toBe(3000);
+  });
+});
+
 describe("transcript resource usage", () => {
   const paint = () => act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
 

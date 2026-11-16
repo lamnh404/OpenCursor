@@ -1255,6 +1255,8 @@ export function App() {
   const [draft, setDraft] = React.useState<{ text: string; attachments?: Attachment[] } | null>(null);
   // callId of the subagent currently opened as its own tab (null = parent chat).
   const [subTab, setSubTab] = React.useState<string | null>(null);
+  const subTabRef = React.useRef(subTab);
+  subTabRef.current = subTab;
   const scrollRef = React.useRef<HTMLDivElement>(null);
   // Single source of truth: one independent session per conversation id. The
   // visible chat just renders the active session. Avoids any snapshot races.
@@ -1340,8 +1342,16 @@ export function App() {
   // True while we're performing a programmatic scroll, so onScroll ignores the
   // resulting events (otherwise stick-state flip-flops → back-and-forth jank).
   const selfScrollRef = React.useRef(false);
-  // Detects conversation switches so we can reset to the bottom on switch.
+  // Detects conversation switches so we can restore that tab's reading position.
   const prevActiveIdRef = React.useRef<string | undefined>(activeId);
+  // Per-conversation reading position, so switching tabs doesn't throw the user
+  // to the bottom. Anchored to a turn group + offset rather than raw scrollTop:
+  // groups use content-visibility:auto, so absolute offsets drift as off-screen
+  // groups get measured after the switch.
+  const scrollMemoRef = React.useRef(new Map<string, { stick: true } | { stick: false; group: number; offset: number }>());
+  const saveScrollRafRef = React.useRef(0);
+  // Bumped on every user scroll gesture; an in-flight restore aborts when it changes.
+  const gestureSeqRef = React.useRef(0);
   // Host-owned durable queue. UI snapshots never trigger execution.
   const queueRef = React.useRef<Map<string, (QueuedMessage & { steering?: boolean; optimisticSteering?: boolean })[]>>(new Map());
   const pendingSteeringRef = React.useRef(new Map<string, Map<string, QueuedMessage>>());
@@ -1405,18 +1415,20 @@ export function App() {
     // Evaluate after the browser applies the gesture's scroll (next frame).
     const evalStick = () => requestAnimationFrame(() => { setStick(atBottom()); });
     const onWheel = (e: WheelEvent) => {
+      gestureSeqRef.current++;
       userScrolledRef.current = true;
       if (e.deltaY < 0) setStick(false); // scrolling up always unsticks
       else evalStick(); // scrolling down re-arms only if it lands at the bottom
     };
-    const onDown = () => { draggingRef.current = true; }; // possible scrollbar drag
+    const onDown = () => { gestureSeqRef.current++; draggingRef.current = true; }; // possible scrollbar drag
     const onUp = () => { draggingRef.current = false; };
-    const onTouch = () => { userScrolledRef.current = true; evalStick(); };
+    const onTouch = () => { gestureSeqRef.current++; userScrolledRef.current = true; evalStick(); };
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !(event.target instanceof Element)) return;
       if (event.target.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]')) return;
       if (event.key === " " && event.target.closest('button, [role="button"], summary')) return;
       if (!["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) return;
+      gestureSeqRef.current++;
       userScrolledRef.current = true;
       if (["ArrowUp", "PageUp", "Home"].includes(event.key) || event.key === " " && event.shiftKey) setStick(false);
       else evalStick();
@@ -1438,9 +1450,30 @@ export function App() {
     };
   }, [setStick]);
 
+  const restoringRef = React.useRef(false);
+  const turnGroups = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll<HTMLElement>(".chat-turn-group")).filter((g) => g.parentElement === el);
+  // Remember where the reader is in the current conversation (keyed by the
+  // conversation the DOM is showing, i.e. prevActiveIdRef after a switch).
+  const saveScrollPos = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || restoringRef.current || subTabRef.current) return;
+    const key = prevActiveIdRef.current ?? "";
+    if (stickRef.current) { scrollMemoRef.current.set(key, { stick: true }); return; }
+    const top = el.getBoundingClientRect().top;
+    const groups = turnGroups(el);
+    const gi = groups.findIndex((g) => g.getBoundingClientRect().bottom > top);
+    if (gi < 0) return;
+    scrollMemoRef.current.set(key, { stick: false, group: gi, offset: top - groups[gi].getBoundingClientRect().top });
+  }, []);
+
   const onScroll = React.useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    if (!saveScrollRafRef.current) saveScrollRafRef.current = requestAnimationFrame(() => {
+      saveScrollRafRef.current = 0;
+      saveScrollPos();
+    });
     // Ignore scroll events we triggered ourselves (prevents feedback loops that
     // make the stick-to-bottom state flip-flop → visible back-and-forth jank).
     if (selfScrollRef.current) return;
@@ -1491,10 +1524,36 @@ export function App() {
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Switching conversations: cancel any pending pin and land at the bottom.
+    // Switching conversations: cancel any pending pin and restore where the user
+    // was reading in that tab (or land at the bottom if they were following).
     if (prevActiveIdRef.current !== activeId) {
       prevActiveIdRef.current = activeId;
       pinTopRef.current = false;
+      const memo = scrollMemoRef.current.get(activeId ?? "");
+      if (memo && !memo.stick) {
+        userScrolledRef.current = true;
+        setStick(false);
+        sizeSpacer();
+        const seq = gestureSeqRef.current;
+        // Re-apply for a few frames: off-screen groups (content-visibility:auto)
+        // and markdown/code blocks settle their real heights after the first pass.
+        let n = 12;
+        const restore = () => {
+          const c = scrollRef.current;
+          if (!c || gestureSeqRef.current !== seq || prevActiveIdRef.current !== activeId) { restoringRef.current = false; return; }
+          const g = turnGroups(c)[memo.group];
+          if (g) {
+            restoringRef.current = true;
+            selfScrollRef.current = true;
+            c.scrollTop += g.getBoundingClientRect().top - c.getBoundingClientRect().top + memo.offset;
+            selfScrollRef.current = false;
+          }
+          if (n-- > 0) requestAnimationFrame(restore);
+          else restoringRef.current = false;
+        };
+        restore();
+        return;
+      }
       userScrolledRef.current = false;
       setStick(true);
       // Synchronous snap in the layout effect = the first painted frame is
@@ -1750,6 +1809,7 @@ export function App() {
             setOpenTabs((t) => t.filter((id) => id === "" || ids.has(id)));
             // Keep the "" pending session (brand-new chat awaiting its id).
             for (const k of [...sessionsRef.current.keys()]) if (k !== "" && !ids.has(k)) sessionsRef.current.delete(k);
+            for (const k of [...scrollMemoRef.current.keys()]) if (k !== "" && !ids.has(k)) scrollMemoRef.current.delete(k);
           }
           if (msg.activeId) setOpenTabs((t) => t.includes(msg.activeId!) ? t : [...t, msg.activeId!]);
           markRunning(msg.runningConvIds);
