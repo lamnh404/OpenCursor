@@ -331,3 +331,10 @@ it("skips unchanged saves, caps run events, and trims tool output when archiving
   expect(archived.runEvents!.every(event => event.type.startsWith("queue."))).toBe(true);
   expect(store.list()[0].allowModelOutputEdits).toBe(true);
 });
+
+it("persists the history panel width with the chat workspace", async () => {
+  const store = new ConversationStore({ workspaceState: storage(), globalState: storage() } as any);
+  await store.setWorkspaceState({ historyPanelOpen: true, historyPanelWidth: 360 });
+  await store.setWorkspaceState({ openTabs: [] });
+  expect(store.getWorkspaceState()).toMatchObject({ historyPanelOpen: true, historyPanelWidth: 360 });
+});

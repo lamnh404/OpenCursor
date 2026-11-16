@@ -63,6 +63,34 @@ it("pins, unpins and closes through dedicated controls", async () => {
   expect(handlers.onClose).toHaveBeenCalledTimes(1);
 });
 
+it("shows the opening request under the title and in the tooltip", async () => {
+  await render({ list: [{ id: "p", title: "Kiểm tra…", updatedAt: now, preview: "Kiểm tra giúp tôi vì sao pod fluent-bit trên uat bị OOMKilled" }] });
+  expect(container.querySelector(".hi-preview")?.textContent).toContain("fluent-bit");
+  expect(container.querySelector(".hi-text")?.getAttribute("title")).toContain("OOMKilled");
+});
+
+it("resizes from the inner edge with the keyboard and resets on double-click", async () => {
+  const onResize = vi.fn();
+  await render({ side: "left", width: 300, onResize });
+  const panel = container.querySelector<HTMLElement>(".history-panel")!;
+  const handle = container.querySelector<HTMLElement>('[role="separator"]')!;
+  expect(panel.style.getPropertyValue("--history-panel-width")).toBe("300px");
+  act(() => { handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); });
+  expect(onResize).toHaveBeenLastCalledWith(316);
+  act(() => { handle.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })); });
+  expect(onResize).toHaveBeenLastCalledWith(640);
+  act(() => { handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); });
+  expect(onResize).toHaveBeenLastCalledWith(280);
+});
+
+it("grows a right-docked panel when the handle moves left", async () => {
+  const onResize = vi.fn();
+  await render({ side: "right", width: 300, onResize });
+  const handle = container.querySelector<HTMLElement>('[role="separator"]')!;
+  act(() => { handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+  expect(onResize).toHaveBeenLastCalledWith(316);
+});
+
 it("hides the pinned group while browsing archived threads", async () => {
   await render({ list: [], results: undefined });
   click(container.querySelector('[aria-pressed]'));

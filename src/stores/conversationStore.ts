@@ -40,6 +40,8 @@ export interface Conversation {
   archivedAt?: number;
   /** Pinned conversations sort ahead of the recency order in the history panel. */
   pinnedAt?: number;
+  /** Opening user request, kept in metadata so the history list never loads transcripts. */
+  preview?: string;
   forkedFrom?: string;
   goal?: ConversationGoal;
   queue?: QueuedMessage[];
@@ -59,8 +61,18 @@ export interface ConversationSummary {
   updatedAt: number;
   archivedAt?: number;
   pinnedAt?: number;
+  preview?: string;
   excerpt?: string;
   allowModelOutputEdits?: boolean;
+}
+
+const PREVIEW_CHARS = 240;
+/** The first user message, whitespace-collapsed, as a one-glance reminder of what was asked. */
+export function previewFromTurns(turns: Turn[] | undefined): string | undefined {
+  const first = turns?.find((turn) => turn.role === "user" && !turn.steering && turn.text.trim());
+  if (!first || first.role !== "user") return undefined;
+  const text = first.text.trim().replace(/\s+/g, " ");
+  return text.length > PREVIEW_CHARS ? text.slice(0, PREVIEW_CHARS) + "…" : text;
 }
 
 /** Run evidence kept per conversation; the durable run journal holds the full record. */
@@ -358,9 +370,36 @@ export class ConversationStore {
       })
       .filter((c) => c.matches)
       .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0) || b.updatedAt - a.updatedAt)
-      .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, archivedAt: c.archivedAt, pinnedAt: c.pinnedAt, excerpt: c.excerpt, ...(c.allowModelOutputEdits ? { allowModelOutputEdits: true } : {}) }));
+      .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, archivedAt: c.archivedAt, pinnedAt: c.pinnedAt, preview: c.preview ?? (this.cache.unloaded.has(c.id) ? undefined : previewFromTurns(c.turns)), excerpt: c.excerpt, ...(c.allowModelOutputEdits ? { allowModelOutputEdits: true } : {}) }));
     if (query) this.trimLoaded();
     return result;
+  }
+
+  /**
+   * Conversations saved before previews existed only have them in their transcript.
+   * Read those files once in the background and keep the result in metadata.
+   * Resolves true when any preview was added.
+   */
+  async backfillPreviews(): Promise<boolean> {
+    await this.cache.ready;
+    const found = new Map<string, string>();
+    for (const conversation of this.cache.conversations) {
+      if (conversation.preview) continue;
+      let turns: Turn[] | undefined = this.cache.unloaded.has(conversation.id) ? undefined : conversation.turns;
+      if (!turns && this.cache.directory) {
+        try {
+          const body = JSON.parse(await fs.readFile(this.bodyFile(conversation.id), "utf8")) as { turns?: Turn[] };
+          turns = Array.isArray(body.turns) ? body.turns : undefined;
+        } catch { continue; }
+      }
+      const preview = previewFromTurns(turns);
+      if (preview) found.set(conversation.id, preview);
+    }
+    if (!found.size) return false;
+    // Re-read the list: conversations may have changed while files were being read.
+    const list = this.cache.conversations.map((c) => !c.preview && found.has(c.id) ? { ...c, preview: found.get(c.id) } : c);
+    await this.persist(list);
+    return true;
   }
 
   private loadSafely(id: string): Conversation | undefined {
@@ -447,6 +486,10 @@ export class ConversationStore {
     const changes = Object.fromEntries(changed.map((key) => [key, patch[key]])) as ConversationPatch;
     if (changes.runEvents) changes.runEvents = capRunEvents(changes.runEvents);
     let next: Conversation = { ...current, ...structuredClone(changes), updatedAt: Date.now() };
+    if (changes.turns) {
+      const preview = previewFromTurns(changes.turns);
+      if (preview) next.preview = preview; else delete next.preview;
+    }
     let bodyChanged = changed.some((key) => (BODY_KEYS as readonly string[]).includes(key));
     if (changes.archivedAt && !current.archivedAt) { next = { ...trimArchivedConversation(next), pinnedAt: undefined }; bodyChanged = true; }
     list[i] = next;
@@ -570,6 +613,7 @@ export class ConversationStore {
       ...(stored?.models ? { models: structuredClone(stored.models) } : {}),
       ...(stored?.modes ? { modes: structuredClone(stored.modes) } : {}),
       ...(stored?.historyPanelOpen ? { historyPanelOpen: true } : {}),
+      ...(stored?.historyPanelWidth ? { historyPanelWidth: stored.historyPanelWidth } : {}),
     };
   }
 
@@ -583,6 +627,7 @@ export class ConversationStore {
       ...(current?.models ? { models: current.models } : {}),
       ...(current?.modes ? { modes: current.modes } : {}),
       ...(current?.historyPanelOpen ? { historyPanelOpen: true } : {}),
+      ...(current?.historyPanelWidth ? { historyPanelWidth: current.historyPanelWidth } : {}),
       ...structuredClone(patch),
     };
     // Drafts arrive per keystroke: coalesce them into one storage write.

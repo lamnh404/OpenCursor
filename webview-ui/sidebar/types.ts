@@ -48,6 +48,8 @@ export interface ConversationSummary {
   updatedAt: number;
   archivedAt?: number;
   pinnedAt?: number;
+  /** Opening user request, shown under the title. */
+  preview?: string;
   excerpt?: string;
   /** Per-conversation opt-in to editing assistant text and reasoning. */
   allowModelOutputEdits?: boolean;

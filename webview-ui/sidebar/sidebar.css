@@ -4319,9 +4319,11 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 	flex-direction: column;
 }
 .history-panel {
-	--history-panel-width: 220px;
+	--history-panel-width: 280px;
+	position: relative;
 	flex: 0 0 var(--history-panel-width);
 	width: var(--history-panel-width);
+	max-width: 70%;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
@@ -4334,6 +4336,45 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 	border-right: 0;
 	border-left: 1px solid var(--line-soft);
 }
+/* Drag handle on the edge facing the chat. */
+.history-resizer {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: -3px;
+	width: 6px;
+	z-index: 5;
+	cursor: col-resize;
+	touch-action: none;
+	outline: none;
+}
+.history-panel[data-side="right"] .history-resizer {
+	right: auto;
+	left: -3px;
+}
+.history-resizer::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 2px;
+	width: 2px;
+	background: transparent;
+	transition: background var(--dur-1) var(--ease);
+}
+.history-resizer:hover::after,
+.history-resizer:focus-visible::after,
+.history-panel.resizing .history-resizer::after {
+	background: var(--accent);
+}
+.history-panel.resizing {
+	user-select: none;
+	animation: none;
+}
+.history-panel.resizing,
+.history-panel.resizing * {
+	cursor: col-resize !important;
+}
 /* Narrow sidebars cannot spare the width: float the panel over the chat instead. */
 @container chat-shell (max-width: 420px) {
 	.history-panel {
@@ -4343,6 +4384,7 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 		left: 0;
 		z-index: 60;
 		width: min(var(--history-panel-width), 85cqw);
+		max-width: none;
 		background: var(--dropdown-bg);
 		box-shadow: var(--el-3);
 	}
@@ -4458,14 +4500,28 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 .hi-pin:hover {
 	color: var(--accent);
 }
-/* Docked rows are narrow: timestamps drop below the title, excerpts clamp. */
-.history-panel .hi-text {
-	flex-direction: column;
+/* Docked rows: title wraps to two lines, then the opening request, then the time.
+   Actions float over the row on hover so they never steal width from the text. */
+.history-panel .history-item {
+	position: relative;
 	align-items: flex-start;
+	min-height: 0;
+	padding: 6px 8px;
+}
+.history-panel .hi-text {
+	width: 100%;
+	flex-direction: column;
+	align-items: stretch;
 	gap: 2px;
+	padding: 0;
 }
 .history-panel .hi-title {
-	width: 100%;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	line-height: 1.35;
 }
 .history-panel .hi-text .hi-excerpt {
 	display: -webkit-box;
@@ -4473,8 +4529,48 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 	-webkit-box-orient: vertical;
 	white-space: normal;
 	overflow: hidden;
+	overflow-wrap: anywhere;
 	font-size: 11px;
+	line-height: 1.4;
 	color: var(--fg-dim);
+}
+.history-panel .hi-time {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.history-panel .hi-time svg {
+	color: var(--accent);
+}
+.hi-actions {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+}
+.history-panel .hi-actions {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	gap: 0;
+	padding: 1px;
+	border-radius: var(--r-md);
+	background: var(--dropdown-bg);
+	box-shadow: var(--el-2, 0 1px 4px rgba(0, 0, 0, .3));
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--dur-1) var(--ease);
+}
+.history-panel .history-item:hover .hi-actions,
+.history-panel .history-item:focus-within .hi-actions {
+	opacity: 1;
+	pointer-events: auto;
+}
+.history-panel .hi-actions .hi-del {
+	opacity: 1;
+}
+/* A pinned row already shows its pin next to the time; the toolbar handles unpinning. */
+.history-panel .hi-pin.on {
+	opacity: 1;
 }
 
 /* Conversation shell and supporting controls. */

@@ -51,6 +51,8 @@ export interface ChatWorkspaceState {
   modes?: Record<string, Mode>;
   /** Docked history panel visibility; absent means closed. */
   historyPanelOpen?: boolean;
+  /** Docked history panel width in CSS pixels; absent means the default width. */
+  historyPanelWidth?: number;
 }
 
 export type ReviewTarget =

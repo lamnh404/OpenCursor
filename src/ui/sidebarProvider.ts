@@ -122,6 +122,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   ) {
     this._store = new ConversationStore(context);
     this._workflowReady = this._store.recoverInterruptedRuns();
+    void this._workflowReady
+      .then(() => this._store.backfillPreviews())
+      .then((changed) => { if (changed) this._sendConversations(); })
+      .catch((error) => logError("conversation.backfillPreviews", error));
     const disk = context.globalState.get<{ fetched: { providerId: string; ids: string[] }[] }>(
       SidebarProvider.MODELS_CACHE_KEY,
     );

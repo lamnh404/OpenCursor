@@ -22,14 +22,27 @@ function timeAgo(ts: number): string {
   return d + "d ago";
 }
 
+export const HISTORY_WIDTH_DEFAULT = 280;
+export const HISTORY_WIDTH_MIN = 180;
+export const HISTORY_WIDTH_MAX = 640;
+const RESIZE_STEP = 16;
+
+export function clampHistoryWidth(width: number): number {
+  if (!Number.isFinite(width)) return HISTORY_WIDTH_DEFAULT;
+  return Math.round(Math.min(HISTORY_WIDTH_MAX, Math.max(HISTORY_WIDTH_MIN, width)));
+}
+
 /**
  * Docked conversation history. Lives beside the chat column (never over it) so the
  * user can keep browsing threads while reading; selecting a thread leaves it open.
+ * The inner edge drags (or arrow-keys) to resize; double-click restores the default.
  */
 export function HistoryPanel({
   list,
   activeId,
   side,
+  width,
+  onResize,
   onSelect,
   onDelete,
   onClose,
@@ -42,6 +55,9 @@ export function HistoryPanel({
   list: ConversationSummary[];
   activeId?: string;
   side: HistoryPanelSide;
+  /** Saved width in CSS pixels; the panel previews drags locally and commits on release. */
+  width?: number;
+  onResize?: (width: number) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
@@ -51,6 +67,51 @@ export function HistoryPanel({
   onSearch?: (query: string, archived: boolean, requestId: number) => void;
   results?: { requestId: number; list: ConversationSummary[] };
 }) {
+  const [liveWidth, setLiveWidth] = React.useState(() => clampHistoryWidth(width ?? HISTORY_WIDTH_DEFAULT));
+  const [dragging, setDragging] = React.useState(false);
+  React.useEffect(() => { setLiveWidth(clampHistoryWidth(width ?? HISTORY_WIDTH_DEFAULT)); }, [width]);
+  const commitWidth = (next: number) => {
+    const clamped = clampHistoryWidth(next);
+    setLiveWidth(clamped);
+    onResize?.(clamped);
+  };
+  // Dragging toward the chat grows the panel: rightward for a left panel, leftward for a right one.
+  const direction = side === "right" ? -1 : 1;
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX, startWidth = liveWidth;
+    let latest = startWidth;
+    handle.setPointerCapture?.(e.pointerId);
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      latest = clampHistoryWidth(startWidth + (ev.clientX - startX) * direction);
+      setLiveWidth(latest);
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      setDragging(false);
+      if (latest !== startWidth) commitWidth(latest);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+  const onHandleKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const grow = side === "right" ? "ArrowLeft" : "ArrowRight";
+    const shrink = side === "right" ? "ArrowRight" : "ArrowLeft";
+    const step = e.shiftKey ? RESIZE_STEP * 4 : RESIZE_STEP;
+    if (e.key === grow) commitWidth(liveWidth + step);
+    else if (e.key === shrink) commitWidth(liveWidth - step);
+    else if (e.key === "Home") commitWidth(HISTORY_WIDTH_MIN);
+    else if (e.key === "End") commitWidth(HISTORY_WIDTH_MAX);
+    else return;
+    e.preventDefault();
+  };
+
   const [query, setQuery] = React.useState("");
   const [archived, setArchived] = React.useState(false);
   const [requestId, setRequestId] = React.useState(0);
@@ -82,8 +143,13 @@ export function HistoryPanel({
   ];
 
   return (
-    <aside className="history-panel" data-side={side} aria-label="Conversation history"
+    <aside className={"history-panel" + (dragging ? " resizing" : "")} data-side={side} aria-label="Conversation history"
+      style={{ "--history-panel-width": `${liveWidth}px` } as React.CSSProperties}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      <div className="history-resizer" role="separator" aria-orientation="vertical" aria-label="Resize history panel"
+        aria-valuemin={HISTORY_WIDTH_MIN} aria-valuemax={HISTORY_WIDTH_MAX} aria-valuenow={liveWidth} tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={startDrag} onKeyDown={onHandleKey} onDoubleClick={() => commitWidth(HISTORY_WIDTH_DEFAULT)} />
       <div className="history-heading">
         <span>Threads</span>
         <button className="btn-ghost" aria-pressed={archived} onClick={() => setArchived((value) => !value)}>{archived ? "Show active" : "Archived"}</button>
@@ -111,13 +177,17 @@ export function HistoryPanel({
               <div className="history-group-label">{group.label}</div>
               {group.items.map((c) => {
                 const isPinned = !!c.pinnedAt;
+                // Search hits show the matching passage; otherwise remind what was asked.
+                const detail = c.excerpt || (c.preview && c.preview !== c.title.replace(/…$/, "") ? c.preview : undefined);
+                const tooltip = [c.title, c.preview && c.preview !== c.title ? c.preview : "", new Date(c.updatedAt).toLocaleString()].filter(Boolean).join("\n\n");
                 return (
                   <div key={c.id} className={"history-item" + (c.id === activeId ? " active" : "") + (isPinned ? " pinned" : "")}>
-                    <button className="hi-text" aria-label={`Open ${c.title}`} aria-current={c.id === activeId ? "true" : undefined} onClick={() => onSelect(c.id)}>
+                    <button className="hi-text" title={tooltip} aria-label={`Open ${c.title}`} aria-current={c.id === activeId ? "true" : undefined} onClick={() => onSelect(c.id)}>
                       <span className="hi-title">{c.title}</span>
-                      <span className="hi-time">{timeAgo(c.updatedAt)}</span>
-                      {c.excerpt && <span className="hi-excerpt">{c.excerpt}</span>}
+                      {detail && <span className={c.excerpt ? "hi-excerpt" : "hi-excerpt hi-preview"}>{detail}</span>}
+                      <span className="hi-time">{isPinned && <Icon name="pinFilled" size={10} />}{timeAgo(c.updatedAt)}</span>
                     </button>
+                    <div className="hi-actions">
                     {onPin && !archived && (
                       <button className={"hi-del hi-pin" + (isPinned ? " on" : "")} title={isPinned ? "Unpin" : "Pin"} aria-label={`${isPinned ? "Unpin" : "Pin"} ${c.title}`} aria-pressed={isPinned}
                         onClick={() => onPin(c.id, !isPinned)}>
@@ -137,6 +207,7 @@ export function HistoryPanel({
                     >
                       <Icon name="trash" size={14} />
                     </button>
+                    </div>
                   </div>
                 );
               })}

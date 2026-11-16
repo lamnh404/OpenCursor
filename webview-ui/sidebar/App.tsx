@@ -1198,6 +1198,11 @@ export function App() {
       return next;
     });
   }, []);
+  const [historyWidth, setHistoryWidth] = React.useState<number | undefined>(undefined);
+  const resizeHistory = React.useCallback((width: number) => {
+    setHistoryWidth(width);
+    if (workspaceReady.current) post({ type: "updateChatWorkspace", state: { historyPanelWidth: width } });
+  }, []);
   const [moreOpen, setMoreOpen] = React.useState(false);
   const moreRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -1639,6 +1644,7 @@ export function App() {
             draftsRef.current = loadedDrafts;
             setOpenTabs(initialTabs);
             setHistoryOpen(msg.workspaceState.historyPanelOpen === true);
+            setHistoryWidth(msg.workspaceState.historyPanelWidth);
             setDraftTick();
           } else if (msg.activeId) setOpenTabs((t) => t.includes(msg.activeId!) ? t : [...t, msg.activeId!]);
           workspaceReady.current = true;
@@ -2290,6 +2296,8 @@ export function App() {
           list={conversations}
           activeId={activeId}
           side={historySide}
+          width={historyWidth}
+          onResize={resizeHistory}
           onSelect={(id) => post({ type: "selectConversation", id })}
           onDelete={(id) => post({ type: "deleteConversation", id })}
           onPin={(id, pinned) => post({ type: "pinConversation", id, pinned })}

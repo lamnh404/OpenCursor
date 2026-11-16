@@ -177,3 +177,23 @@ it("removes the transcript file with its conversation and preserves a corrupt on
   expect(reopened.get(keep.id)?.turns).toEqual([]);
   expect(fs.readdirSync(dir).some((name) => name.includes(".corrupt-"))).toBe(true);
 });
+
+it("keeps the opening request in metadata and backfills it for older file-backed chats", async () => {
+  const { context, workspaceState } = fixture();
+  const store = new ConversationStore(context as any);
+  const a = await store.create();
+  await store.update(a.id, { title: "Short", turns: transcript("why  is\n the   pod\tcrashing") });
+  await store.flush();
+  expect(store.list()[0].preview).toBe("why is the pod crashing request");
+
+  // Simulate metadata written before previews existed.
+  const saved = workspaceState.get<any[]>("ocursor.conversations")!;
+  await workspaceState.update("ocursor.conversations", saved.map(({ preview: _drop, ...rest }) => rest));
+  const reopened = restart(context);
+  expect(reopened.list()[0].preview).toBeUndefined();
+  expect(await reopened.backfillPreviews()).toBe(true);
+  expect(reopened.list()[0].preview).toBe("why is the pod crashing request");
+  expect(await reopened.backfillPreviews()).toBe(false);
+  await reopened.flush();
+  expect(workspaceState.get<any[]>("ocursor.conversations")![0].preview).toBe("why is the pod crashing request");
+});
