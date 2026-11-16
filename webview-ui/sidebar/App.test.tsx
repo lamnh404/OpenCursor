@@ -20,7 +20,7 @@ vi.mock("../shared/vscode", () => ({ vscode: { postMessage: vi.fn() } }));
 const composerRenders = vi.hoisted(() => ({ count: 0 }));
 vi.mock("./components/Composer", () => ({
   KIND_SVG: {}, applyFileIconTo: vi.fn(),
-  Composer: (props: any) => (composerRenders.count++, <div data-testid="composer" data-running={props.isRunning} data-model={props.selectedModel} data-mode={props.mode} data-draft={props.tabDraft?.text ?? ""}><button data-testid="send" onClick={() => props.onSubmit("queued-A", [])}>Send fixture</button><button data-testid="agent" onClick={() => props.onMode("agent")}>Agent mode</button><button data-testid="select-model-b" onClick={() => props.onSelectModel("api::model-B")}>Select model B</button><button data-testid="cancel-edit" onClick={() => props.onCancelEdit?.()}>Cancel edit</button></div>),
+  Composer: (props: any) => (composerRenders.count++, <div data-testid="composer" data-running={props.isRunning} data-model={props.selectedModel} data-mode={props.mode} data-draft={props.tabDraft?.text ?? ""} data-quote={props.replyQuote ?? ""}><button data-testid="send" onClick={() => props.onSubmit("queued-A", [])}>Send fixture</button><button data-testid="agent" onClick={() => props.onMode("agent")}>Agent mode</button><button data-testid="select-model-b" onClick={() => props.onSelectModel("api::model-B")}>Select model B</button><button data-testid="cancel-edit" onClick={() => props.onCancelEdit?.()}>Cancel edit</button></div>),
 }));
 let root: Root, container: HTMLDivElement;
 beforeEach(() => {
@@ -76,7 +76,7 @@ describe("docked history panel", () => {
 });
 
 describe("reply to selected assistant text", () => {
-  it("offers Reply for selected answer text and appends the quote to the current draft", () => {
+  it("offers Reply for selected answer text and attaches it as a quote without touching the draft", () => {
     initial({ runningConvIds: [], turns: [
       { role: "user", text: "Explain" },
       { role: "assistant", blocks: [{ kind: "text", text: "A useful explanation" }] },
@@ -92,7 +92,9 @@ describe("reply to selected assistant text", () => {
     const reply = document.querySelector<HTMLButtonElement>('[aria-label="Reply to selection"]');
     expect(reply).not.toBeNull();
     act(() => reply!.click());
-    expect(container.querySelector('[data-testid="composer"]')?.getAttribute("data-draft")).toBe('My question\n\n> A useful explanation\n\n');
+    const composer = container.querySelector('[data-testid="composer"]');
+    expect(composer?.getAttribute("data-draft")).toBe("My question");
+    expect(composer?.getAttribute("data-quote")).toBe("A useful explanation");
     expect(document.querySelector('[aria-label="Reply to selection"]')).toBeNull();
     selection.removeAllRanges();
   });

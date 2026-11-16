@@ -1049,7 +1049,12 @@ export function Composer({
   onTeams,
   approvalPolicy,
   persona,
+  replyQuote,
+  onClearQuote,
 }: {
+  /** Selected assistant text being replied to; shown above the editor, prepended on send. */
+  replyQuote?: string | null;
+  onClearQuote?: () => void;
   mode: Mode;
   onMode: (m: Mode) => void;
   /** Subagent teams available for Project mode. */
@@ -1581,7 +1586,11 @@ export function Composer({
   // Send (or queue, when a run is in flight). Never stops the run — stopping is
   // only possible via an explicit click on the stop button.
   const submit = () => {
-    const text = serialize();
+    const typed = serialize();
+    const quote = !editing && replyQuote ? replyQuote.split(/\r?\n/).map(line => `> ${line}`).join("\n") : "";
+    const text = quote && typed ? `${quote}\n\n${typed}` : typed;
+    if (quote && !typed && attachments.length === 0) return;
+    if (quote) onClearQuote?.();
     if (!text && attachments.length === 0) {
       // Empty editor + queued messages: fire the next queued one immediately
       // (replaces the current run if one is in flight).
@@ -1611,6 +1620,16 @@ export function Composer({
         {dragOver && (
           <div className="drop-hint">
             <Icon name="at" size={13} /> Drop to mention
+          </div>
+        )}
+        {!editing && replyQuote && (
+          <div className="reply-quote">
+            <Icon name="steer" size={14} className="reply-quote-icon" />
+            <span className="reply-quote-text" title={replyQuote}>“{replyQuote.replace(/\s+/g, " ")}”</span>
+            <button type="button" className="reply-quote-close" aria-label="Remove quoted text" title="Remove quoted text"
+              onClick={() => { onClearQuote?.(); edRef.current?.focus(); }}>
+              <Icon name="close" size={12} />
+            </button>
           </div>
         )}
         {attachments.length > 0 && (

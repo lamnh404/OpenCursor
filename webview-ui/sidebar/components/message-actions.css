@@ -75,6 +75,38 @@
 .selection-reply:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 @media (forced-colors: active) { .selection-reply { border: 1px solid ButtonText; } }
 
+/* Quoted selection pinned above the composer editor (not part of the typed text). */
+.reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 6px 2px;
+  padding: 7px 8px 7px 10px;
+  border-radius: 10px;
+  background: var(--surface-2, var(--hover));
+  color: var(--fg-dim);
+  font-size: 12px;
+  min-width: 0;
+}
+.reply-quote-icon { flex: 0 0 auto; }
+.reply-quote-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-quote-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.reply-quote-close:hover { background: var(--hover); color: var(--fg); }
+.reply-quote-close:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+
 /* "Allow editing model output": per-block edit affordance and inline editor. */
 .editable-output { position: relative; }
 /* The pencil lives inside the block it edits: in the header row of cards

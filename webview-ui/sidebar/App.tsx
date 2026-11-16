@@ -1228,6 +1228,7 @@ export function App() {
   // Per-tab composer drafts. Key "" = brand-new chat (no backend id yet).
   const draftsRef = React.useRef<Map<string, ComposerDraft>>(new Map());
   const [, setDraftTick] = React.useReducer((n: number) => n + 1, 0);
+  const [replyQuotes, setReplyQuotes] = React.useState<Record<string, string>>({});
   const hasDraft = (id: string) => {
     const d = draftsRef.current.get(id);
     return !!(d && (d.text.trim() || d.attachments.length));
@@ -2289,24 +2290,17 @@ export function App() {
   const composerOnResetModelOptions = useStableCallback((modelId: string) => post({ type: "resetModelOptions", modelId }));
   const composerOnRunNextQueued = useStableCallback(() => runQueuedNow(queued.findIndex(item => !isQueuedSteering(item))));
   const composerOnTabDraft = useStableCallback((d: ComposerDraft) => setTabDraft(draftKey, d));
+  // The quote lives beside the draft, never inside it, so typed text is untouched.
   const replyToSelection = useStableCallback((text: string) => {
-    const current = draftsRef.current.get(draftKey) ?? { text: "", attachments: [] };
-    const quote = text.split(/\r?\n/).map(line => `> ${line}`).join("\n");
-    setTabDraft(draftKey, { ...current, text: `${current.text}${current.text && !current.text.endsWith("\n") ? "\n\n" : ""}${quote}\n\n` });
-    setDraftTick();
-    // Two frames: the composer restores the draft in an effect, which resets the caret.
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      const editor = document.querySelector<HTMLElement>('.editor[aria-label="Message OpenCursor"]');
-      if (!editor) return;
-      editor.focus();
-      const range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }));
+    setReplyQuotes(quotes => ({ ...quotes, [draftKey]: text }));
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.editor[aria-label="Message OpenCursor"]')?.focus());
   });
+  const clearReplyQuote = useStableCallback(() => setReplyQuotes(quotes => {
+    if (!(draftKey in quotes)) return quotes;
+    const next = { ...quotes };
+    delete next[draftKey];
+    return next;
+  }));
   const composerOnSubmit = useStableCallback((text: string, attachments: Attachment[]) => {
     setDraft(null);
     draftsRef.current.delete(draftKey);
@@ -2669,6 +2663,8 @@ export function App() {
           pause={pause}
           onTogglePause={composerOnTogglePause}
           submitWithCtrlEnter={uiPrefs.submitWithCtrlEnter}
+          replyQuote={replyQuotes[draftKey] ?? null}
+          onClearQuote={clearReplyQuote}
         />
       </div>
       </div>

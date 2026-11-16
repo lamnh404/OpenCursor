@@ -586,6 +586,23 @@ it('keeps Shift+Enter for newlines without sending', () => {
   expect(editor().querySelectorAll('p')).toHaveLength(2);
 });
 
+it('shows a reply quote above the editor and prepends it on send without touching typed text', () => {
+  const onClearQuote = vi.fn();
+  act(() => root.render(<Composer {...props} initialText="Why?" replyQuote={"line one\nline two"} onClearQuote={onClearQuote} />));
+  expect(container.querySelector('.reply-quote')?.textContent).toContain('line one line two');
+  expect(editor().textContent).toBe('Why?');
+  key(editor(), 'Enter');
+  expect(submit).toHaveBeenCalledWith('> line one\n> line two\n\nWhy?', []);
+  expect(onClearQuote).toHaveBeenCalled();
+});
+
+it('removes the reply quote with its close button', () => {
+  const onClearQuote = vi.fn();
+  act(() => root.render(<Composer {...props} replyQuote="quoted" onClearQuote={onClearQuote} />));
+  act(() => container.querySelector<HTMLButtonElement>('[aria-label="Remove quoted text"]')!.click());
+  expect(onClearQuote).toHaveBeenCalled();
+});
+
 it('uses the latest submit handler when a follow-up is queued during a run', () => {
   const queue = vi.fn();
   act(() => root.render(<Composer {...props} initialText="Follow up" />));
