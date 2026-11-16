@@ -10,6 +10,7 @@
 import { sendMessageIntent, restoreTurns, type QueuedMessage, type ConversationGoal } from "../../src/shared/chatSession";
 import { setQuestionAnswers } from "../../src/shared/turns";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../shared/icons";
 import { Select } from "../shared/Select";
 import { ImagePreview } from "../shared/ImagePreview";
@@ -411,21 +412,83 @@ const UserMessage = React.memo(function UserMessage({ turn, index, isRunning, on
 });
 
 /** An assistant response with its actions; memoized like {@link UserMessage}. */
-const AssistantMessage = React.memo(function AssistantMessage({ turn, index, isRunning, running, phase, waitingTasks, onImplement, onOpenSubagent, approvals, taskApprovals, onRetry }: {
+const AssistantMessage = React.memo(function AssistantMessage({ turn, index, isRunning, running, phase, waitingTasks, onImplement, onOpenSubagent, approvals, taskApprovals, onRetry, onReply }: {
   turn: AssistantTurn; index: number; isRunning: boolean; running: boolean; phase?: string; waitingTasks?: WaitingTask[];
   onImplement?: (path: string) => void; onOpenSubagent?: (callId: string) => void;
   approvals: Record<string, ApprovalRequestInfo>; taskApprovals: Record<string, ApprovalRequestInfo[]>;
-  onRetry?: (index: number) => void;
+  onRetry?: (index: number) => void; onReply: (text: string) => void;
 }) {
+  const bubbleRef = React.useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = React.useState<{ text: string; top: number; left: number } | null>(null);
+  const showReply = () => {
+    const selected = window.getSelection();
+    const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
+    const bubble = bubbleRef.current;
+    const startNode = range?.startContainer;
+    const endNode = range?.endContainer;
+    const start = (startNode instanceof Element ? startNode : startNode?.parentElement)?.closest(".markdown-content");
+    const end = (endNode instanceof Element ? endNode : endNode?.parentElement)?.closest(".markdown-content");
+    if (!range || range.collapsed || !bubble || !start || start !== end || !bubble.contains(start) || !bubble.contains(end)) {
+      setSelection(null);
+      return;
+    }
+    const text = selected!.toString().trim();
+    if (!text) { setSelection(null); return; }
+    const rect = range.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > window.innerHeight) { setSelection(null); return; }
+    // Flip below the selection when there is no room above it.
+    const top = rect.top >= 46 ? rect.top - 38 : rect.bottom + 8;
+    setSelection({ text, top, left: Math.max(8, Math.min(rect.left, window.innerWidth - 88)) });
+  };
+  const replyRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (!selection) return;
+    const dismiss = (event: Event) => {
+      if (event.type === "pointerdown" && (event.target as Element).closest?.(".selection-reply")) return;
+      setSelection(null);
+    };
+    // Tab moves focus to Reply so the action is reachable without a mouse;
+    // modifier-only presses (e.g. Shift+Arrow extending the selection) keep it open.
+    const onKey = (event: KeyboardEvent) => {
+      if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+      if (event.key === "Tab" && !event.shiftKey && document.activeElement !== replyRef.current) {
+        event.preventDefault();
+        replyRef.current?.focus();
+        return;
+      }
+      if ((event.key === "Enter" || event.key === " ") && document.activeElement === replyRef.current) return;
+      setSelection(null);
+    };
+    const onSelectionChange = () => {
+      if (document.activeElement === replyRef.current) return;
+      const current = window.getSelection();
+      if (!current || current.isCollapsed || !current.rangeCount || !bubbleRef.current?.contains(current.getRangeAt(0).commonAncestorContainer)) setSelection(null);
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    document.addEventListener("scroll", dismiss, true);
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("scroll", dismiss, true);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [selection]);
   return (
     <div className="msg assistant message-shell" data-turn-index={index}>
       <div className="role">
         <Icon name="bot" /> Agent
       </div>
-      <div className="bubble">
+      <div className="bubble" ref={bubbleRef} onMouseUp={showReply} onKeyUp={showReply}>
         <AssistantContent turn={turn} turnIndex={index} running={running} phase={phase} waitingTasks={waitingTasks}
           onImplement={onImplement} onOpenSubagent={onOpenSubagent} approvals={approvals} taskApprovals={taskApprovals} />
       </div>
+      {selection && createPortal(<button ref={replyRef} type="button" className="selection-reply" aria-label="Reply to selection" title="Reply to selection (Tab, then Enter)"
+        style={{ top: selection.top, left: selection.left }} onMouseDown={event => event.preventDefault()}
+        onClick={() => { onReply(selection.text); setSelection(null); window.getSelection()?.removeAllRanges(); }}>
+        <Icon name="chat" size={14} /> Reply
+      </button>, document.body)}
       <MessageActions variant="assistant" text={responseText(turn.blocks)} disabled={isRunning}
         onRetry={onRetry ? () => onRetry(index) : undefined} />
     </div>
@@ -2226,6 +2289,24 @@ export function App() {
   const composerOnResetModelOptions = useStableCallback((modelId: string) => post({ type: "resetModelOptions", modelId }));
   const composerOnRunNextQueued = useStableCallback(() => runQueuedNow(queued.findIndex(item => !isQueuedSteering(item))));
   const composerOnTabDraft = useStableCallback((d: ComposerDraft) => setTabDraft(draftKey, d));
+  const replyToSelection = useStableCallback((text: string) => {
+    const current = draftsRef.current.get(draftKey) ?? { text: "", attachments: [] };
+    const quote = text.split(/\r?\n/).map(line => `> ${line}`).join("\n");
+    setTabDraft(draftKey, { ...current, text: `${current.text}${current.text && !current.text.endsWith("\n") ? "\n\n" : ""}${quote}\n\n` });
+    setDraftTick();
+    // Two frames: the composer restores the draft in an effect, which resets the caret.
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const editor = document.querySelector<HTMLElement>('.editor[aria-label="Message OpenCursor"]');
+      if (!editor) return;
+      editor.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }));
+  });
   const composerOnSubmit = useStableCallback((text: string, attachments: Attachment[]) => {
     setDraft(null);
     draftsRef.current.delete(draftKey);
@@ -2467,7 +2548,7 @@ export function App() {
                     phase={isRunning && turn === turns[turns.length - 1] && !status.error ? status.text : undefined}
                     waitingTasks={isRunning && turn === turns[turns.length - 1] && !status.error ? status.tasks : undefined}
                     onImplement={onImplement} onOpenSubagent={onOpenSubagent} approvals={approvalsByCall} taskApprovals={approvalsByTask}
-                    onRetry={group[0].turn.role === "user" ? onRetryResponse : undefined} />
+                    onRetry={group[0].turn.role === "user" ? onRetryResponse : undefined} onReply={replyToSelection} />
                 )
               )}
 

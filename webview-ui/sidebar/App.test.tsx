@@ -75,6 +75,62 @@ describe("docked history panel", () => {
   });
 });
 
+describe("reply to selected assistant text", () => {
+  it("offers Reply for selected answer text and appends the quote to the current draft", () => {
+    initial({ runningConvIds: [], turns: [
+      { role: "user", text: "Explain" },
+      { role: "assistant", blocks: [{ kind: "text", text: "A useful explanation" }] },
+    ], workspaceState: { openTabs: ["A"], drafts: { A: { text: "My question", attachments: [] } } }, uiPrefs: { motion: "reduced", perTabDrafts: true } });
+    const text = container.querySelector(".msg.assistant .block-group .markdown-content")!;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    range.getBoundingClientRect = () => ({ top: 50, left: 20 } as DOMRect);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    act(() => container.querySelector(".msg.assistant .bubble")!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    const reply = document.querySelector<HTMLButtonElement>('[aria-label="Reply to selection"]');
+    expect(reply).not.toBeNull();
+    act(() => reply!.click());
+    expect(container.querySelector('[data-testid="composer"]')?.getAttribute("data-draft")).toBe('My question\n\n> A useful explanation\n\n');
+    expect(document.querySelector('[aria-label="Reply to selection"]')).toBeNull();
+    selection.removeAllRanges();
+  });
+
+  it("moves focus to Reply on Tab and dismisses on Escape", () => {
+    initial({ runningConvIds: [], turns: [
+      { role: "user", text: "Explain" },
+      { role: "assistant", blocks: [{ kind: "text", text: "Answer" }] },
+    ] });
+    const range = document.createRange();
+    range.selectNodeContents(container.querySelector(".msg.assistant .block-group .markdown-content")!);
+    range.getBoundingClientRect = () => ({ top: 50, bottom: 70, left: 20 } as DOMRect);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    act(() => container.querySelector(".msg.assistant .bubble")!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })); });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Reply to selection");
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.querySelector('[aria-label="Reply to selection"]')).toBeNull();
+    window.getSelection()!.removeAllRanges();
+  });
+
+  it("does not offer Reply for selections outside assistant answer text", () => {
+    initial({ runningConvIds: [], turns: [
+      { role: "user", text: "Explain" },
+      { role: "assistant", blocks: [{ kind: "text", text: "Answer" }] },
+    ] });
+    const text = container.querySelector(".msg.user .bubble")!.firstChild!;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    act(() => container.querySelector(".msg.assistant .bubble")!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    expect(document.querySelector('[aria-label="Reply to selection"]')).toBeNull();
+    window.getSelection()!.removeAllRanges();
+  });
+});
+
 describe("per-tab reading position", () => {
   const GROUP = 500, VIEW = 400;
   const turnsFor = (tag: string) => Array.from({ length: 6 }, (_, i) => [

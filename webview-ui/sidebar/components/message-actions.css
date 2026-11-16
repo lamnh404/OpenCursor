@@ -55,6 +55,26 @@
   border: 0;
 }
 
+.selection-reply {
+  position: fixed;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--control-radius-sm, 6px);
+  background: var(--vscode-editorWidget-background, var(--surface-2));
+  color: var(--fg);
+  box-shadow: 0 3px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, .25));
+  font: inherit;
+  cursor: pointer;
+}
+.selection-reply:hover { background: var(--hover); }
+.selection-reply:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+@media (forced-colors: active) { .selection-reply { border: 1px solid ButtonText; } }
+
 /* "Allow editing model output": per-block edit affordance and inline editor. */
 .editable-output { position: relative; }
 /* The pencil lives inside the block it edits: in the header row of cards
