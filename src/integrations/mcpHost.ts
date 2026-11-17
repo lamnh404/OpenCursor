@@ -24,7 +24,7 @@ export async function presentMcpElicitation(server: string, request: ElicitReque
       const choice = await vscode.window.showInformationMessage(`${server} requests: ${request.message.slice(0, 2000)}\n\nOpen ${url.origin} to continue.`, { modal: true }, "Open browser", "Decline");
       if (signal.aborted || !choice) return { action: "cancel" };
       if (choice !== "Open browser") return { action: "decline" };
-      return { action: await vscode.env.openExternal(vscode.Uri.parse(url.toString())) ? "accept" : "cancel" };
+      return { action: await openExternalVerbatim(url.toString()) ? "accept" : "cancel" };
     }
     const entries = Object.entries(request.requestedSchema.properties);
     if (entries.length > 20) throw new Error("MCP form exceeds the supported 20-field limit.");
@@ -75,6 +75,15 @@ export async function presentMcpElicitation(server: string, request: ElicitReque
   } finally { signal.removeEventListener("abort", abort); cancellation.dispose(); }
 }
 
+/**
+ * `vscode.Uri.parse(url)` round-trips through `Uri.toString()`, which percent-encodes the query's
+ * `=` and `&`. OAuth authorize URLs then arrive with no `client_id` or `redirect_uri` and the
+ * server rejects them. The ext-host `openUri` accepts a raw string and forwards it unchanged.
+ */
+export function openExternalVerbatim(url: string): Thenable<boolean> {
+  return vscode.env.openExternal(url as unknown as vscode.Uri);
+}
+
 export function configureMcpAuthentication(context: vscode.ExtensionContext): void {
-  mcpManager.configureHost({ secrets: context.secrets, openExternal: (url) => vscode.env.openExternal(vscode.Uri.parse(url)), elicit: presentMcpElicitation });
+  mcpManager.configureHost({ secrets: context.secrets, openExternal: (url) => openExternalVerbatim(url), elicit: presentMcpElicitation });
 }
