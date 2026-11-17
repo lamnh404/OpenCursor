@@ -14,7 +14,7 @@ import { getWorkspaceRoot } from "../context/workspaceUtils";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { UnauthorizedError, auth as sdkAuth } from "@modelcontextprotocol/sdk/client/auth.js";
 import { CallToolResultSchema, ReadResourceResultSchema, ToolListChangedNotificationSchema, ResourceListChangedNotificationSchema, ResourceUpdatedNotificationSchema, ElicitRequestSchema, type CallToolResult, type ReadResourceResult, type ElicitRequest, type ElicitResult } from "@modelcontextprotocol/sdk/types.js";
 import { McpOAuthProvider, McpAuthRequiredError, validateMcpRemoteUrl, type McpSecretStorage } from "./mcpOAuth";
 
@@ -249,14 +249,14 @@ export class McpConnection {
     try {
       await provider.beginAuthorization();
       await this.client?.close();
-      try { await this.connectRemote(15000); }
-      catch (error) {
-        if (!provider.authorizationUrl || !this.remote) throw error;
+      // Run OAuth explicitly: servers that allow an anonymous handshake (initialize/tools/list) only
+      // return 401 on tools/call, so waiting for the connection to fail never starts sign in.
+      const serverUrl = validateMcpRemoteUrl(this.config.url!);
+      if (await sdkAuth(provider, { serverUrl }) === "REDIRECT") {
         const code = await provider.waitForCode();
-        await this.remote.finishAuth(code);
-        await this.client?.close();
-        await this.connectRemote(15000);
+        await sdkAuth(provider, { serverUrl, authorizationCode: code });
       }
+      await this.connectRemote(15000);
       this.authState = await provider.tokens() ? "authenticated" : "none"; this.lastError = undefined;
     } catch (error) { this.authState = "required"; this.lastError = error instanceof Error ? error.message : String(error); throw error; }
     finally { provider.endAuthorization(); }

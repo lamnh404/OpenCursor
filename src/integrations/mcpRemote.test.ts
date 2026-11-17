@@ -112,13 +112,21 @@ it("reports authentication required without claiming a remote connection succeed
   manager.disposeAll();
 });
 
-it("completes an explicit OAuth PKCE sign in against a loopback server and logs out", async () => {
+it.each([
+  { anonymousHandshake: false, label: "a server that rejects every unauthenticated request" },
+  { anonymousHandshake: true, label: "a server that allows an anonymous handshake and gates only tool calls" },
+])("completes an explicit OAuth PKCE sign in against $label and logs out", async ({ anonymousHandshake }) => {
   const secrets = new Map<string, string>();
   let base = "", challenge = "", opened = 0, exchanged = 0;
-  protocol = new Server({ name: "oauth-fixture", version: "1" }, { capabilities: { tools: {} } });
-  protocol.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{ name: "authorized", inputSchema: { type: "object" as const } }] }));
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
-  await protocol.connect(transport);
+  // Stateless per-request server: the anonymous case initializes once before sign in and again after it.
+  const serveMcp = async (request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse) => {
+    const server = new Server({ name: "oauth-fixture", version: "1" }, { capabilities: { tools: {} } });
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{ name: "authorized", inputSchema: { type: "object" as const } }] }));
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    response.on("close", () => { void transport.close(); void server.close(); });
+    await server.connect(transport);
+    await transport.handleRequest(request, response);
+  };
   http = createServer((request, response) => {
     const route = async () => {
       const url = new URL(request.url || "/", base);
@@ -142,10 +150,10 @@ it("completes an explicit OAuth PKCE sign in against a loopback server and logs 
         exchanged++; return json({ access_token: "fixture-access", token_type: "Bearer", refresh_token: "fixture-refresh-token" });
       }
       if (url.pathname === "/mcp") {
-        if (request.headers.authorization !== "Bearer fixture-access") {
+        if (!anonymousHandshake && request.headers.authorization !== "Bearer fixture-access") {
           response.writeHead(401, { "WWW-Authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"` }); response.end(); return;
         }
-        await transport.handleRequest(request, response); return;
+        await serveMcp(request, response); return;
       }
       response.writeHead(404); response.end();
     };
@@ -158,7 +166,7 @@ it("completes an explicit OAuth PKCE sign in against a loopback server and logs 
   manager.configureHost({ secrets: { get: async (key) => secrets.get(key), store: async (key, value) => { secrets.set(key, value); }, delete: async (key) => { secrets.delete(key); } }, openExternal: async (url) => { opened++; const response = await fetch(url); return response.ok; } });
   try {
     await manager.sync([{ name: "oauth", transport: "http", enabled: true, url: `${base}/mcp` }]);
-    expect(opened).toBe(0); expect(manager.status()[0].authState).toBe("required");
+    expect(opened).toBe(0); expect(manager.status()[0].authState).toBe(anonymousHandshake ? "none" : "required");
     await manager.login("oauth");
     expect(opened).toBe(1); expect(exchanged).toBe(1);
     expect(manager.status()[0]).toMatchObject({ connected: true, authState: "authenticated", tools: ["authorized"] });
