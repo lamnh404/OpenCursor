@@ -15,7 +15,7 @@ import { Select } from "../shared/Select";
 import { ImagePreview } from "../shared/ImagePreview";
 import { MarkdownView } from "../shared/MarkdownView";
 import { vscode } from "../shared/vscode";
-import { Composer, KIND_SVG, applyFileIconTo, type ComposerDraft } from "./components/Composer";
+import { Composer, ContextRing, contextWindowFor, KIND_SVG, applyFileIconTo, type ComposerDraft } from "./components/Composer";
 import { ToolCard, TaskActivityContext, ModelPickerContext, InlineModelPicker, isReadonlySubagent, TimeoutBadge, ToolTimeoutWatch, isToolCountdownActive, useLiveDisclosure } from "./components/Tool";
 import { History } from "./components/History";
 import { MessageActions } from "./components/MessageActions";
@@ -931,6 +931,9 @@ function SubagentChat({
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [resumeModel, setResumeModel] = React.useState<string>("");
   const pinnedApprovals = React.useMemo(() => approvalsForSubagent(block, approvals), [block, approvals]);
+  const { modelList, selectedModel } = React.useContext(ModelPickerContext);
+  const requestedModel = String(block.input?.model || "");
+  const subModelId = (requestedModel && modelList.find((m) => m.id === requestedModel || (m.modelId || m.id.replace(/^.*::/, "")) === requestedModel)?.id) || selectedModel;
 
   return (
     <div className="subagent-view" data-running={running}>
@@ -955,7 +958,10 @@ function SubagentChat({
         <MessageActions variant="user" text={taskPrompt} />
       </div>
       <div className="msg assistant message-shell">
-        <div className="role"><Icon name="bot" /> Subagent</div>
+        <div className="role">
+          <Icon name="bot" /> Subagent
+          {block.subUsedTokens !== undefined && <ContextRing used={block.subUsedTokens} total={contextWindowFor(modelList, subModelId)} />}
+        </div>
         <div className="bubble">
           {sub.length === 0 ? (
             <div className="sub-empty">{running ? "Starting…" : "No activity"}</div>

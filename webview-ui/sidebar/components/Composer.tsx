@@ -240,7 +240,13 @@ function parseContextSize(v: string | undefined): number {
 }
 
 /** Context usage indicator at the trailing edge of the composer. */
-function ContextRing({ used, total }: { used: number; total: number }) {
+/** Context window size for a model, falling back to 128k when unconfigured. */
+export function contextWindowFor(modelList: ModelDef[], modelId: string): number {
+  const sel = modelList.find((m) => m.id === modelId);
+  return parseContextSize(sel?.options.find((o) => o.key === "max_context")?.value) || 128_000;
+}
+
+export function ContextRing({ used, total }: { used: number; total: number }) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const tooltipRef = React.useRef<HTMLDivElement>(null);
@@ -1453,8 +1459,9 @@ export function Composer({
       } else if (msg?.type === "mentionSearchResults" && msg.requestId === reqRef.current) {
         setMentionItems(msg.items || []);
         setIndex(0);
-      } else if (msg?.type === "insertMention" && msg.mention && !editing) {
+      } else if (msg?.type === "insertMention" && msg.mention && (editing || !document.querySelector(".msg.user.editing"))) {
         // Ctrl+L from the editor: insert a @code/@file pill at the caret.
+        // While a past message is being edited, only that composer takes it.
         insertMention(msg.mention as MentionItem);
       } else if (msg?.type === "pasteResolved" && pastePendingRef.current && msg.requestId === pastePendingRef.current.id) {
         // Host checked the pasted text against project files.
@@ -1919,9 +1926,7 @@ export function Composer({
           </div>
           <div className="right">
             {!editing && (() => {
-              const sel = modelList.find((m) => m.id === selectedModel);
-              const total = parseContextSize(sel?.options.find((o) => o.key === "max_context")?.value) || 128_000;
-              return <ContextRing used={usedTokens ?? 0} total={total} />;
+              return <ContextRing used={usedTokens ?? 0} total={contextWindowFor(modelList, selectedModel)} />;
             })()}
             <ModelPicker models={models} modelList={modelList} selected={selectedModel} onSelect={onSelectModel} onSaveOptions={onSaveModelOptions} onResetOptions={onResetModelOptions} />
             {editing && (
