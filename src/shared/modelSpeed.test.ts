@@ -22,6 +22,7 @@ describe("fast mode capabilities", () => {
     ["claude-opus-5-5", "anthropic", "anthropic"],
     ["claude-opus-5", "claude-code", "anthropic"],
     ["claude-opus-4-8-20260528", "anthropic", "anthropic"],
+    ["claude-fable-5-2", "claude-code", "anthropic"],
     ["cc/claude-opus-5-5", "openai", "anthropic"],
     ["anthropic/claude-opus-5-5", "anthropic", "anthropic"],
   ])("recognizes %s through %s without rewriting its ID", (model, kind, protocol) => {

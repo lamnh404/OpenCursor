@@ -40,6 +40,7 @@ export const MODEL_PRICING: ProtocolRecord = {
     "claude-fable-5": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50 },
     // https://platform.claude.com/docs/en/about-claude/pricing (5m cache write; cache reads
     // are 0.025x on Fable 5.1 and 0.05x on Opus/Sonnet 5.5). Haiku 5.5 uses the <=100k tier.
+    "claude-fable-5-2": { input: 8.00, output: 40.00, cached: 0.20, reasoning: 40.00, cache_creation: 10.00 },
     "claude-fable-5-1": { input: 10.00, output: 50.00, cached: 0.25, reasoning: 50.00, cache_creation: 12.50 },
     "claude-opus-5-5": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },
     "claude-opus-5-5-thinking": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },

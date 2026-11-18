@@ -1090,8 +1090,13 @@ async function getClaudeLimits(acc: OAuthAccount, signal?: AbortSignal): Promise
   };
   win(d.five_hour, "Session (5h)");
   win(d.seven_day, "Weekly (7d)");
+  // Model-specific caps (e.g. the Fable share of the weekly limit) arrive as extra
+  // utilization windows whose key names aren't documented, so accept any of them.
   for (const [k, v] of Object.entries(d).sort(([a], [b]) => compareModels(a, b))) {
-    if (k.startsWith("seven_day_") && k !== "seven_day") win(v, `Weekly ${k.slice("seven_day_".length)} (7d)`);
+    if (k === "five_hour" || k === "seven_day") continue;
+    if (k.startsWith("seven_day_")) win(v, `Weekly ${k.slice("seven_day_".length).replace(/_/g, " ")} (7d)`);
+    else if (k.startsWith("five_hour_")) win(v, `Session ${k.slice("five_hour_".length).replace(/_/g, " ")} (5h)`);
+    else win(v, k.replace(/_/g, " "));
   }
   return out;
 }
@@ -1305,8 +1310,16 @@ async function upstreamErrorSummary(response: Response): Promise<string> {
   return "";
 }
 
+const CLAUDE_CODE_VERSION_GATE = /does not support this model; version [\d.]+ or newer is required/i;
+const CLAUDE_CODE_VERSION_GATE_HINT = " This model isn't available through OpenCursor's Claude Code sign-in. Add an Anthropic API key in OpenCursor's provider settings to use it, or use it in an up-to-date Claude Code.";
+
+export function claudeCodeVersionGateHint(label: string, summary: string): string {
+  return label === "claude-code" && CLAUDE_CODE_VERSION_GATE.test(summary) ? CLAUDE_CODE_VERSION_GATE_HINT : "";
+}
+
 async function oauthStreamError(label: string, response: Response): Promise<ChatHTTPError> {
-  const error = new ChatHTTPError(response.ok ? 502 : response.status, `${label} ${response.status}${await upstreamErrorSummary(response)}`);
+  const summary = await upstreamErrorSummary(response);
+  const error = new ChatHTTPError(response.ok ? 502 : response.status, `${label} ${response.status}${summary}${claudeCodeVersionGateHint(label, summary)}`);
   const retry = response.headers.get("retry-after");
   if (retry) {
     const delay = /^\d+(?:\.\d+)?$/.test(retry.trim()) ? Number(retry) * 1000 : Date.parse(retry) - Date.now();

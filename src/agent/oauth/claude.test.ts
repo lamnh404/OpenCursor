@@ -55,7 +55,7 @@ describe("Claude OAuth request protocol", () => {
     expect(first).toEqual({
       authorization: "Bearer first-account", "anthropic-version": "2023-06-01",
       "anthropic-beta": "oauth-2025-04-20", accept: "application/json",
-      "user-agent": "claude-cli/2.1.280 (external, cli)",
+      "user-agent": "claude-cli/2.1.290 (external, cli)",
     });
     expect(second).toEqual({ ...first, authorization: "Bearer second-account" });
     expect(second["x-api-key"]).toBeUndefined();
@@ -72,7 +72,7 @@ describe("Claude OAuth request protocol", () => {
     expect(request.headers.get("accept")).toBe("text/event-stream");
     expect(request.headers.get("content-type")).toBe("application/json");
     expect(request.headers.get("anthropic-version")).toBe("2023-06-01");
-    expect(request.headers.get("user-agent")).toBe("claude-cli/2.1.280 (external, sdk-cli)");
+    expect(request.headers.get("user-agent")).toBe("claude-cli/2.1.290 (external, sdk-cli)");
     expect(request.headers.get("x-app")).toBe("cli");
     expect(request.headers.get("anthropic-dangerous-direct-browser-access")).toBe("true");
     expect(request.headers.get("x-stainless-package-version")).toBe("0.80.0");
@@ -82,6 +82,7 @@ describe("Claude OAuth request protocol", () => {
     expect(request.headers.get("x-stainless-timeout")).toBe("600");
     expect(request.headers.has("x-api-key")).toBe(false);
     expect(CLAUDE_OAUTH_CONFIG.models).toContain("claude-fable-5-1");
+    expect(CLAUDE_OAUTH_CONFIG.models).toContain("claude-fable-5-2");
     expect(CLAUDE_OAUTH_CONFIG.models).toContain("claude-haiku-4-5-20251001");
   });
 
@@ -137,7 +138,7 @@ describe("Claude OAuth request protocol", () => {
       signal: new AbortController().signal,
     });
     const body = JSON.parse(String(request.init.body));
-    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.280\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=[0-9a-f]{5};$/);
+    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.290\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=[0-9a-f]{5};$/);
     expect(body.system[1].text).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
     const userId = JSON.parse(body.metadata.user_id);
     expect(Object.keys(userId)).toEqual(["device_id", "account_uuid", "session_id"]);
@@ -227,7 +228,7 @@ describe("Claude OAuth streaming contract", () => {
       expect(url).toBe(CLAUDE_OAUTH_CONFIG.messagesUrl);
       const headers = new Headers(init.headers);
       expect(headers.get("authorization")).toBe("Bearer contract-access");
-      expect(headers.get("user-agent")).toBe("claude-cli/2.1.280 (external, sdk-cli)");
+      expect(headers.get("user-agent")).toBe("claude-cli/2.1.290 (external, sdk-cli)");
       const body = JSON.parse(String(init.body));
       expect(body.tools).toHaveLength(1);
       expect(body.tools[0].name).toBe("Read");

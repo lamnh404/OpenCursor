@@ -442,6 +442,11 @@ export const PROVIDER_MODELS: ProviderModelSpec[] = [
     "kind": "claude-code"
   },
   {
+    "id": "claude-fable-5-2",
+    "name": "Claude Fable 5.2",
+    "kind": "claude-code"
+  },
+  {
     "id": "claude-fable-5-1",
     "name": "Claude Fable 5.1",
     "kind": "claude-code"

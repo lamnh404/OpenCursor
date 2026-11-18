@@ -236,6 +236,22 @@ describe("Codex reset credit is sent once", () => {
     await expect(consume()).resolves.toContainEqual({ type: "text-delta", text: "Resumed" });
   });
 
+  it("shows Claude Code model-specific windows such as the Fable weekly cap", async () => {
+    const account = await seed("claude-code");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      five_hour: { utilization: 10, resets_at: null },
+      seven_day: { utilization: 30, resets_at: null },
+      seven_day_fable: { utilization: 64, resets_at: null },
+      extra_usage: { is_enabled: false },
+    })));
+    const usage = await getAccountLimits(account.id);
+    expect(usage.limits.map((l) => [l.label, l.remaining])).toEqual([
+      ["Session (5h)", 90],
+      ["Weekly (7d)", 70],
+      ["Weekly fable (7d)", 36],
+    ]);
+  });
+
   it("sorts Antigravity per-model quota limits best-to-worst regardless of upstream map order", async () => {
     const account = await seed("antigravity");
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({
