@@ -172,6 +172,7 @@ const CURATED_MODEL_CATALOG: ModelDef[] = [
 	// Anthropic: Opus 5.5 and Fable always think. Opus 5 can disable thinking only through
 	// high effort (optionsFor applies that dependent restriction).
 	{ id: "claude-opus-5-5", name: "Claude Opus 5.5", kind: ["anthropic", "claude-code"], options: [thinking("adaptive", ["adaptive"]), effort("medium", ["low", "medium", "high", "xhigh", "max"]), ctx(["300k", "1m"], "1m")] },
+	{ id: "claude-fable-5-2", name: "Claude Fable 5.2", kind: ["anthropic", "claude-code"], options: [thinking("adaptive", ["adaptive"]), effort("high", ["low", "medium", "high", "xhigh", "max"]), ctx(["300k", "1m"], "1m")] },
 	{ id: "claude-fable-5-1", name: "Claude Fable 5.1", kind: ["anthropic", "claude-code"], options: [thinking("adaptive", ["adaptive"]), effort("high", ["low", "medium", "high", "xhigh", "max"]), ctx(["300k", "1m"], "1m")] },
 	// Sonnet 5.5 rejects thinking "disabled" (its off switch, "between_tools", is not sent);
 	// Haiku 5.5 can disable thinking only at high effort or below (optionsFor applies that).

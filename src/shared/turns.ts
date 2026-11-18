@@ -74,6 +74,8 @@ export interface ToolBlock {
   /** For task (subagent) blocks: the nested read-only sub-chat stream. */
   subBlocks?: AssistantBlock[];
   subStatus?: "running" | "finished" | "error" | "cancelled";
+  /** For task blocks: the subagent's current context occupancy in tokens. */
+  subUsedTokens?: number;
 }
 export interface TextBlock {
   kind: "text";
@@ -635,6 +637,10 @@ export function applyEvent(turns: Turn[], ev: AgentEvent): Turn[] {
     const child = ev.event;
     if (child.type === "run-result") return turns; // summary lands in tool result
     const b = location.block;
+    if (child.type === "usage") {
+      if (child.source && child.source !== "parent") return turns;
+      return b.subUsedTokens === child.totalTokens ? turns : updateTool(turns, location, { ...b, subUsedTokens: child.totalTokens });
+    }
     if (child.type === "run-status" && child.status === "running" && b.subStatus === "finished") return turns;
     return updateTool(turns, location,
       child.type === "run-status"

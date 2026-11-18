@@ -12,8 +12,19 @@ import type { OAuthAccount, OAuthKind } from "./oauth/types";
 
 vi.mock("vscode", () => ({ EventEmitter: class { event = () => ({ dispose() {} }); fire() {} } }));
 vi.mock("../stores/featureStore", () => ({ MODEL_CATALOG: [] }));
-import { disconnect, getAccountLimits, initOAuth, isConnected, listAccounts, listOAuthModels, setAccountEnabled, streamOAuthChat } from "./oauth";
+import { claudeCodeVersionGateHint, disconnect, getAccountLimits, initOAuth, isConnected, listAccounts, listOAuthModels, setAccountEnabled, streamOAuthChat } from "./oauth";
 import { buildMessages } from "./messages";
+
+describe("claudeCodeVersionGateHint", () => {
+  const gate = ": Claude Code 2.1.280 does not support this model; version 2.1.290 or newer is required. Run 'claude update', or update the Claude desktop app, then try again.";
+  it("points Claude Code version-gate rejections at the API-key provider", () => {
+    expect(claudeCodeVersionGateHint("claude-code", gate)).toContain("Anthropic API key");
+  });
+  it("leaves other errors and providers unchanged", () => {
+    expect(claudeCodeVersionGateHint("claude-code", ": overloaded")).toBe("");
+    expect(claudeCodeVersionGateHint("codex", gate)).toBe("");
+  });
+});
 
 const saved = new Map<string, string>();
 const sse = (kind: OAuthKind) => new Response(`data: ${JSON.stringify(kind === "codex"
