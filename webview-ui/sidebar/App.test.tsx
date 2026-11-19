@@ -99,6 +99,25 @@ describe("reply to selected assistant text", () => {
     selection.removeAllRanges();
   });
 
+  it("offers Reply for a backwards selection released outside the answer", () => {
+    initial({ runningConvIds: [], turns: [
+      { role: "user", text: "Explain" },
+      { role: "assistant", blocks: [{ kind: "text", text: "Backwards answer" }] },
+    ] });
+    const textNode = container.querySelector(".msg.assistant .block-group .markdown-content")!.querySelector("p")!.firstChild!;
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.setBaseAndExtent(textNode, textNode.textContent!.length, textNode, 0);
+    expect(selection.anchorOffset).toBeGreaterThan(selection.focusOffset);
+    selection.getRangeAt(0).getBoundingClientRect = () => ({ top: 50, bottom: 70, left: 20 } as DOMRect);
+    act(() => document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    const reply = document.querySelector<HTMLButtonElement>('[aria-label="Reply to selection"]');
+    expect(reply).not.toBeNull();
+    act(() => reply!.click());
+    expect(container.querySelector('[data-testid="composer"]')?.getAttribute("data-quote")).toBe("Backwards answer");
+    selection.removeAllRanges();
+  });
+
   it("moves focus to Reply on Tab and dismisses on Escape", () => {
     initial({ runningConvIds: [], turns: [
       { role: "user", text: "Explain" },

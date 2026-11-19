@@ -328,18 +328,30 @@ const MentionText = React.memo(function MentionText({ text }: { text: string }) 
 /** User message bubble that flags content overflowing its clamp height. It
  *  measures when its message changes or it resizes, instead of forcing a
  *  layout read for every user message on every streaming frame. */
-function ClampedBubble({ measureKey, ...props }: React.ComponentProps<"div"> & { measureKey: unknown }) {
+function ClampedBubble({ measureKey, className, ...props }: React.ComponentProps<"div"> & { measureKey: unknown }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+  React.useLayoutEffect(() => { setExpanded(false); }, [measureKey]);
   React.useLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
-    const measure = () => { element.classList.toggle("clamped", element.scrollHeight > element.clientHeight + 1); };
+    if (!element || expanded) return;
+    const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
     measure();
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
     observer?.observe(element);
     return () => observer?.disconnect();
-  }, [measureKey]);
-  return <div ref={ref} {...props} />;
+  }, [measureKey, expanded]);
+  const classes = [className, overflowing && !expanded && "clamped", expanded && "expanded"].filter(Boolean).join(" ");
+  return <>
+    <div ref={ref} className={classes} {...props} />
+    {overflowing && (
+      <button type="button" className="bubble-expand" aria-expanded={expanded}
+        onClick={(event) => { event.stopPropagation(); setExpanded(value => !value); }}>
+        <Icon name={expanded ? "chevU" : "chevD"} size={12} /> {expanded ? "Show less" : "Show more"}
+      </button>
+    )}
+  </>;
 }
 
 /** Latest-value callback with a stable identity, so memoized children are not
@@ -420,26 +432,45 @@ const AssistantMessage = React.memo(function AssistantMessage({ turn, index, isR
 }) {
   const bubbleRef = React.useRef<HTMLDivElement>(null);
   const [selection, setSelection] = React.useState<{ text: string; top: number; left: number } | null>(null);
-  const showReply = () => {
+  const showReply = React.useCallback(() => {
     const selected = window.getSelection();
     const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
     const bubble = bubbleRef.current;
-    const startNode = range?.startContainer;
-    const endNode = range?.endContainer;
-    const start = (startNode instanceof Element ? startNode : startNode?.parentElement)?.closest(".markdown-content");
-    const end = (endNode instanceof Element ? endNode : endNode?.parentElement)?.closest(".markdown-content");
-    if (!range || range.collapsed || !bubble || !start || start !== end || !bubble.contains(start) || !bubble.contains(end)) {
+    // Owned by the message where either end of the drag sits, so dragging in any
+    // direction (and releasing outside the bubble) still works.
+    if (!range || range.collapsed || !bubble || !(bubble.contains(selected!.anchorNode) || bubble.contains(selected!.focusNode))) {
       setSelection(null);
       return;
     }
-    const text = selected!.toString().trim();
+    // Keep only answer prose: clip the range to each intersecting markdown block,
+    // dropping tool cards, labels and anything outside this message.
+    const text = Array.from(bubble.querySelectorAll(".markdown-content"))
+      .filter(block => range.intersectsNode(block))
+      .map((block) => {
+        const part = document.createRange();
+        part.selectNodeContents(block);
+        if (block.contains(range.startContainer)) part.setStart(range.startContainer, range.startOffset);
+        if (block.contains(range.endContainer)) part.setEnd(range.endContainer, range.endOffset);
+        return part.toString().trim();
+      })
+      .filter(Boolean)
+      .join("\n\n");
     if (!text) { setSelection(null); return; }
     const rect = range.getBoundingClientRect();
     if (rect.bottom < 0 || rect.top > window.innerHeight) { setSelection(null); return; }
     // Flip below the selection when there is no room above it.
     const top = rect.top >= 46 ? rect.top - 38 : rect.bottom + 8;
     setSelection({ text, top, left: Math.max(8, Math.min(rect.left, window.innerWidth - 88)) });
-  };
+  }, []);
+  // Listen document-wide: a backwards drag usually ends above or left of the bubble.
+  React.useEffect(() => {
+    document.addEventListener("mouseup", showReply);
+    document.addEventListener("keyup", showReply);
+    return () => {
+      document.removeEventListener("mouseup", showReply);
+      document.removeEventListener("keyup", showReply);
+    };
+  }, [showReply]);
   const replyRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => {
     if (!selection) return;
@@ -462,7 +493,8 @@ const AssistantMessage = React.memo(function AssistantMessage({ turn, index, isR
     const onSelectionChange = () => {
       if (document.activeElement === replyRef.current) return;
       const current = window.getSelection();
-      if (!current || current.isCollapsed || !current.rangeCount || !bubbleRef.current?.contains(current.getRangeAt(0).commonAncestorContainer)) setSelection(null);
+      const bubble = bubbleRef.current;
+      if (!current || current.isCollapsed || !bubble || !(bubble.contains(current.anchorNode) || bubble.contains(current.focusNode))) setSelection(null);
     };
     document.addEventListener("pointerdown", dismiss, true);
     document.addEventListener("scroll", dismiss, true);
@@ -480,11 +512,11 @@ const AssistantMessage = React.memo(function AssistantMessage({ turn, index, isR
       <div className="role">
         <Icon name="bot" /> Agent
       </div>
-      <div className="bubble" ref={bubbleRef} onMouseUp={showReply} onKeyUp={showReply}>
+      <div className="bubble" ref={bubbleRef}>
         <AssistantContent turn={turn} turnIndex={index} running={running} phase={phase} waitingTasks={waitingTasks}
           onImplement={onImplement} onOpenSubagent={onOpenSubagent} approvals={approvals} taskApprovals={taskApprovals} />
       </div>
-      {selection && createPortal(<button ref={replyRef} type="button" className="selection-reply" aria-label="Reply to selection" title="Reply to selection (Tab, then Enter)"
+      {selection && createPortal(<button ref={replyRef} type="button" className="selection-reply" aria-label="Reply to selection"
         style={{ top: selection.top, left: selection.left }} onMouseDown={event => event.preventDefault()}
         onClick={() => { onReply(selection.text); setSelection(null); window.getSelection()?.removeAllRanges(); }}>
         <Icon name="chat" size={14} /> Reply

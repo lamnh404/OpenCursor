@@ -373,6 +373,30 @@ body {
 	background: linear-gradient(to bottom, transparent, var(--user-bubble));
 	pointer-events: none;
 }
+.msg.user .bubble.expanded {
+	max-height: none;
+}
+.msg.user .bubble-expand {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--fg-dim);
+	font: inherit;
+	font-size: var(--fs-sm, 11px);
+	cursor: pointer;
+}
+.msg.user .bubble-expand:hover {
+	background: var(--hover);
+	color: var(--fg);
+}
+.msg.user .bubble-expand:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+}
 .msg.user .bubble:hover {
 	border-color: var(--line-strong);
 }

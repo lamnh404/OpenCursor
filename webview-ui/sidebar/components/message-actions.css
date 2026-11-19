@@ -65,13 +65,16 @@
   padding: 4px 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--control-radius-sm, 6px);
-  background: var(--vscode-editorWidget-background, var(--surface-2));
+  /* Theme widget/hover colors may be translucent; paint them over an opaque base
+     so the selected text underneath never bleeds through the button. */
+  --selection-reply-fill: var(--vscode-editorWidget-background, var(--surface-2));
+  background: linear-gradient(var(--selection-reply-fill), var(--selection-reply-fill)), var(--bg);
   color: var(--fg);
   box-shadow: 0 3px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, .25));
   font: inherit;
   cursor: pointer;
 }
-.selection-reply:hover { background: var(--hover); }
+.selection-reply:hover { --selection-reply-fill: color-mix(in srgb, var(--fg) 10%, var(--vscode-editorWidget-background, var(--bg))); }
 .selection-reply:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 @media (forced-colors: active) { .selection-reply { border: 1px solid ButtonText; } }
 
