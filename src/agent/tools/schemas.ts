@@ -64,7 +64,7 @@ def({
       rows: { type: "integer", minimum: 5, maximum: 200 },
       working_directory: { type: "string", description: "The absolute path to the working directory to execute the command in (defaults to current directory)" },
       block_until_ms: { type: "number", description: "How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time." },
-      description: { type: "string", description: "Clear, concise description of what this command does in 5-10 words" },
+      description: { type: "string", description: "Always set this. A short English summary (5-12 words) of WHY this command runs, e.g. \"Run inlineReview unit tests after the CodeLens change\". Shown to the user under the command so they can follow long or chained commands." },
       notify_on_output: {
         type: "object",
         properties: {

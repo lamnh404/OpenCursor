@@ -75,6 +75,21 @@
 				"title": "OpenCursor: Implement TODO"
 			},
 			{
+				"command": "ocursor.acceptBlockAtCursor",
+				"title": "Keep Agent Change at Cursor",
+				"category": "OpenCursor"
+			},
+			{
+				"command": "ocursor.rejectBlockAtCursor",
+				"title": "Undo Agent Change at Cursor",
+				"category": "OpenCursor"
+			},
+			{
+				"command": "ocursor.nextBlock",
+				"title": "Go to Next Agent Change",
+				"category": "OpenCursor"
+			},
+			{
 				"command": "ocursor.acceptFileChanges",
 				"title": "Accept Agent Changes in This File",
 				"category": "OpenCursor",
@@ -99,6 +114,18 @@
 				"key": "ctrl+l",
 				"mac": "cmd+l",
 				"when": "editorTextFocus"
+			},
+			{
+				"command": "ocursor.acceptBlockAtCursor",
+				"key": "ctrl+alt+y",
+				"mac": "cmd+y",
+				"when": "editorTextFocus && ocursor.cursorInAgentBlock"
+			},
+			{
+				"command": "ocursor.rejectBlockAtCursor",
+				"key": "ctrl+alt+n",
+				"mac": "cmd+n",
+				"when": "editorTextFocus && ocursor.cursorInAgentBlock"
 			}
 		],
 		"menus": {

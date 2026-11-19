@@ -8,7 +8,7 @@
  */
 
 import { afterEach, expect, it, vi } from "vitest";
-const host = vi.hoisted(() => ({ commands: new Map<string, (...args: any[]) => any>(), provider: undefined as any, tabs: [] as any[], close: vi.fn(async () => true), execute: vi.fn(async (..._args: any[]) => undefined), pick: vi.fn(async (items: any[]) => items.at(-1)), onChange: undefined as any, lenses: undefined as any, applyEdit: (_edit: any) => true as boolean }));
+const host = vi.hoisted(() => ({ commands: new Map<string, (...args: any[]) => any>(), provider: undefined as any, tabs: [] as any[], close: vi.fn(async () => true), execute: vi.fn(async (..._args: any[]) => undefined), pick: vi.fn(async (items: any[]) => items.at(-1)), onChange: undefined as any, lenses: undefined as any, applyEdit: (_edit: any) => true as boolean, openDocument: (_uri: any): any => undefined, showDocument: (_document: any, _options: any): any => undefined }));
 vi.mock("vscode", () => {
   class Uri {
     constructor(readonly scheme: string, readonly path: string, readonly query = "") {}
@@ -25,9 +25,10 @@ vi.mock("vscode", () => {
   return { Uri, EventEmitter, TabInputTextDiff, CodeLens, MarkdownString, WorkspaceEdit,
     languages: { registerCodeLensProvider: (_selector: unknown, provider: any) => { host.lenses = provider; return { dispose() {} }; } },
     Range: class { constructor(...range: number[]) { Object.assign(this, { range }); } }, ThemeColor: class {}, OverviewRulerLane: {}, DecorationRangeBehavior: {}, ViewColumn: {}, ConfigurationTarget: {},
-    workspace: { textDocuments: [] as any[], workspaceFolders: [], applyEdit: async (edit: any) => host.applyEdit(edit), getConfiguration: () => ({ inspect: () => ({}), get: () => false, update: async () => {} }), registerTextDocumentContentProvider: (_scheme: string, provider: any) => { host.provider = provider; return { dispose() {} }; }, onDidChangeTextDocument: (listener: any) => { host.onChange = listener; return { dispose() {} }; } },
+    Position: class { constructor(readonly line: number, readonly character: number) {} }, Selection: class { constructor(readonly anchor: any, readonly active: any) {} }, TextEditorRevealType: { InCenterIfOutsideViewport: 2 },
+    workspace: { textDocuments: [] as any[], workspaceFolders: [], openTextDocument: async (uri: any) => host.openDocument(uri), applyEdit: async (edit: any) => host.applyEdit(edit), getConfiguration: () => ({ inspect: () => ({}), get: () => false, update: async () => {} }), registerTextDocumentContentProvider: (_scheme: string, provider: any) => { host.provider = provider; return { dispose() {} }; }, onDidChangeTextDocument: (listener: any) => { host.onChange = listener; return { dispose() {} }; } },
     commands: { registerCommand: (name: string, callback: any) => { host.commands.set(name, callback); return { dispose() {} }; }, executeCommand: host.execute },
-    window: { visibleTextEditors: [], tabGroups: { all: [{ tabs: host.tabs }], close: host.close }, createTextEditorDecorationType: () => ({ dispose() {} }), onDidChangeVisibleTextEditors: () => ({ dispose() {} }), showQuickPick: host.pick, showInformationMessage: vi.fn(), showErrorMessage: vi.fn(), showWarningMessage: vi.fn() },
+    window: { visibleTextEditors: [], tabGroups: { all: [{ tabs: host.tabs }], close: host.close }, createTextEditorDecorationType: () => ({ dispose() {} }), onDidChangeVisibleTextEditors: () => ({ dispose() {} }), onDidChangeTextEditorSelection: () => ({ dispose() {} }), onDidChangeActiveTextEditor: () => ({ dispose() {} }), showTextDocument: async (document: any, options: any) => host.showDocument(document, options), showQuickPick: host.pick, showInformationMessage: vi.fn(), showErrorMessage: vi.fn(), showWarningMessage: vi.fn() },
   };
 });
 vi.mock("../context/workspaceUtils", () => ({ safePath: (value: string) => value }));
@@ -69,6 +70,26 @@ it("isolates A/B/A snapshots and closes only the accepted conversation's native 
   expect(host.provider.provideTextDocumentContent(aAfter)).toBe("");
 });
 
+it("opens the real file at the first agent block without a diff or edit picker", async () => {
+  registerInlineReview({ subscriptions } as any);
+  const file = "C:/fixture/open-real.txt";
+  pendingChanges.record(file, "a\nb\nc\nd", "a\nb\nC\nd", true, { conversationId: "chat", turnIndex: 0 });
+  pendingChanges.record(file, "a\nb\nC\nd", "a\nb\nC\nD", true, { conversationId: "chat", turnIndex: 1 });
+  const text = "a\nb\nC\nD";
+  const document = { uri: vscode.Uri.file(file), lineCount: 4, getText: () => text, lineAt: (line: number) => ({ text: text.split("\n")[line] }) };
+  const editor: any = { revealRange: vi.fn() };
+  const shown: any[] = [];
+  host.openDocument = () => document;
+  host.showDocument = (doc, options) => { shown.push([doc, options]); return editor; };
+  host.pick.mockClear();
+  await host.commands.get("ocursor.openChangedFile")!(file);
+  expect(shown).toEqual([[document, { preview: false, preserveFocus: false }]]);
+  expect(host.pick).not.toHaveBeenCalled();
+  expect(host.execute).not.toHaveBeenCalledWith("vscode.diff", expect.anything(), expect.anything(), expect.anything(), expect.anything());
+  expect(editor.selection.active.line).toBe(2);
+  expect(editor.revealRange).toHaveBeenCalledOnce();
+});
+
 it("labels standalone file reviews as an aggregate and retains the live file document", async () => {
   vi.useFakeTimers(); registerInlineReview({ subscriptions } as any);
   const file = "C:/fixture/overview.txt";
@@ -106,15 +127,14 @@ it("puts Accept and Reject links above each agent block, following the user's li
   await vi.advanceTimersByTimeAsync(100);
   const text = "mine\nA\nb\nc\nD";
   const lenses = host.lenses.provideCodeLenses({ uri: vscode.Uri.file(pendingChanges.list()[0].path), getText: () => text, lineCount: 5 });
-  const actions = lenses.filter((lens: any) => lens.command.command);
+  const actions = lenses.filter((lens: any) => /Block$/.test(lens.command.command) && lens.command.command !== "ocursor.nextBlock");
   expect(actions.map((lens: any) => [lens.range.range[0], lens.command.command, lens.command.arguments[1]])).toEqual([
     [1, "ocursor.acceptBlock", 0], [1, "ocursor.rejectBlock", 0],
     [4, "ocursor.acceptBlock", 1], [4, "ocursor.rejectBlock", 1],
   ]);
-  // A blank spacer lens sits between Accept and Reject so they're hard to mis-click.
-  expect(lenses.slice(0, 3).map((lens: any) => lens.command.command)).toEqual(["ocursor.acceptBlock", "", "ocursor.rejectBlock"]);
-  expect(actions[0].command.title).toContain("🟩");
-  expect(actions[1].command.title).toContain("🟥");
+  expect(lenses.slice(0, 4).map((lens: any) => lens.command.title)).toEqual([
+    expect.stringMatching(/^🟩 \$\(check\) Keep /), expect.stringMatching(/^🟥 \$\(discard\) Undo /), "$(arrow-down) Next", "1/2",
+  ]);
   expect(host.lenses.provideCodeLenses({ uri: vscode.Uri.file("C:/fixture/other.txt"), getText: () => "", lineCount: 1 })).toEqual([]);
 });
 
@@ -129,11 +149,31 @@ it("refuses a stale block click instead of acting on a different block", async (
   expect(pendingChanges.has(file)).toBe(false);
 });
 
+it("keeps or undoes a lower block first while the upper block stays pending", async () => {
+  vi.useFakeTimers(); registerInlineReview({ subscriptions } as any);
+  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const file = join(mkdtempSync(join(tmpdir(), "ocursor-blocks-")), "two.txt");
+  const before = "a\nb\nc\nd\ne", after = "A\nb\nc\nd\nE";
+  writeFileSync(file, after);
+  pendingChanges.record(file, before, after, true, { conversationId: "chat" });
+  const path = pendingChanges.list()[0].path;
+  const upper = pendingChanges.hunks(path)[0], lower = pendingChanges.hunks(path)[1];
+  await host.commands.get("ocursor.rejectBlock")!(path, 1, lower.startLine);
+  expect(readFileSync(file, "utf8")).toBe("A\nb\nc\nd\ne");
+  expect(pendingChanges.hunks(path).map(h => h.afterLines)).toEqual([["A"]]);
+  await host.commands.get("ocursor.acceptBlock")!(path, 0, upper.startLine);
+  expect(pendingChanges.has(path)).toBe(false);
+  expect(readFileSync(file, "utf8")).toBe("A\nb\nc\nd\ne");
+});
+
 function fakeEditor(path: string, read: () => string) {
   return { setDecorations: vi.fn(), document: { uri: vscode.Uri.file(path), getText: read, get lineCount() { return read().split("\n").length; }, lineAt: (line: number) => ({ text: read().split("\n")[line] ?? "" }) } };
 }
-/** Decoration calls from the latest refresh, in registration order: added, modified, added words, removed. */
-const latestPaint = (editor: ReturnType<typeof fakeEditor>) => editor.setDecorations.mock.calls.slice(-4).map(call => call[1]);
+/** Decoration calls from the latest refresh, in order: added, modified, added words, removed. */
+const PAINTS_PER_REFRESH = 4;
+const latestPaint = (editor: ReturnType<typeof fakeEditor>) => editor.setDecorations.mock.calls.slice(-PAINTS_PER_REFRESH).map(call => call[1]);
 
 it("marks only the agent's lines as modified, not the user's separate edits", async () => {
   vi.useFakeTimers(); registerInlineReview({ subscriptions } as any);
@@ -220,8 +260,8 @@ it("refreshes only the typed editor's highlights and never re-publishes diff ori
   for (let i = 0; i < 20; i++) { text += "x"; host.onChange({ document: typed.document, contentChanges: [{}] }); }
   host.onChange({ document: other.document, contentChanges: [{}] });
   await vi.advanceTimersByTimeAsync(200);
-  // One refresh paints each of the four decoration types once.
-  expect(typed.setDecorations).toHaveBeenCalledTimes(4);
+  // One refresh paints each decoration type once.
+  expect(typed.setDecorations).toHaveBeenCalledTimes(PAINTS_PER_REFRESH);
   expect(latestPaint(typed)[0]).toHaveLength(1);
   expect(other.setDecorations).not.toHaveBeenCalled();
   expect(fire).not.toHaveBeenCalled();

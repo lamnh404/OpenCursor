@@ -35,6 +35,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("Shell purpose line", () => {
+  it("shows the agent's purpose summary under the command", () => {
+    act(() => root.render(<ToolCard block={{ kind: "tool", name: "Shell", callId: "sh", status: "completed", input: { command: "npx vitest run src/ui/inlineReview.test.ts && pnpm run vsix", description: "Run review tests, then rebuild the extension" } }} />));
+    expect(container.querySelector(".shell-cmd")?.textContent).toContain("npx vitest run");
+    expect(container.querySelector(".shell-purpose")?.textContent).toBe("Run review tests, then rebuild the extension");
+  });
+
+  it("omits the purpose line when the agent gave none", () => {
+    act(() => root.render(<ToolCard block={{ kind: "tool", name: "Shell", callId: "sh2", status: "completed", input: { command: "ls" } }} />));
+    expect(container.querySelector(".shell-purpose")).toBeNull();
+  });
+});
+
 describe("Restored tool display", () => {
   it("distinguishes task states and does not mark an unfinished list as complete", () => {
     act(() => root.render(<ToolCard block={{ kind: "tool", name: "TodoWrite", callId: "todos", status: "completed", input: {}, result: "[ ] Pending task\n[~] Active task\n[x] Finished task\n[-] Cancelled task" }} />));

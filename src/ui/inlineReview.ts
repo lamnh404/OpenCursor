@@ -9,7 +9,7 @@
 
 import * as vscode from "vscode";
 import { pendingChanges, type ChangeScope, type PendingChange } from "../stores/pendingChanges";
-import { computeHunks, lineEdits, mapLineForward, revertOnto, withoutHunk } from "../shared/lineDiff";
+import { computeHunks, lineEdits, mapLineForward, revertOnto, withoutHunk, type Hunk } from "../shared/lineDiff";
 import { reviewMarks } from "../shared/reviewMarks";
 import { safePath } from "../context/workspaceUtils";
 import { createHash } from "node:crypto";
@@ -88,6 +88,26 @@ async function showInlineDiff(relPath: string, preserveFocus = true, scope?: Cha
     { preserveFocus, preview: false, viewColumn: vscode.ViewColumn.Active }
   );
   openDiffs.set(before.toString(), entry);
+}
+
+/**
+ * Open the real file (not a diff) so review happens in place: highlights and
+ * per-block Accept/Reject lenses are already drawn on file editors. Scrolls to
+ * the first agent block.
+ */
+async function openChangedFile(relPath: string) {
+  const fileUri = fileUriFor(relPath);
+  if (!fileUri) return;
+  const document = await vscode.workspace.openTextDocument(fileUri);
+  const editor = await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
+  const change = pendingChanges.get(fileUri.fsPath);
+  const first = change && !change.previewOnly ? computeHunks(change.before, change.after)[0] : undefined;
+  if (!first) return;
+  const lastLine = Math.max(document.lineCount - 1, 0);
+  const line = Math.min(mapLineForward(change!.after, document.getText(), first.startLine), lastLine);
+  const position = new vscode.Position(line, 0);
+  editor.selection = new vscode.Selection(position, position);
+  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
 /** Close any inline-diff tab we opened for `relPath`. */
@@ -260,28 +280,88 @@ function pendingPathFor(uri?: vscode.Uri): string | undefined {
  * than applied to a different block.
  */
 const codeLensesChanged = new vscode.EventEmitter<void>();
+const IS_MAC = process.platform === "darwin";
+// Labels must match the `keybindings` contributed in package.json.
+const KEEP_KEY = IS_MAC ? "⌘Y" : "Ctrl+Alt+Y";
+const UNDO_KEY = IS_MAC ? "⌘N" : "Ctrl+Alt+N";
+
+interface LiveBlock { hunk: Hunk; index: number; startLine: number; endLine: number }
+/** Agent blocks located in the live document text (which may include the user's own edits). */
+function liveBlocks(change: PendingChange, document: vscode.TextDocument): LiveBlock[] {
+  const text = document.getText();
+  const lastLine = Math.max(document.lineCount - 1, 0);
+  return computeHunks(change.before, change.after).map((hunk, index) => {
+    const startLine = Math.min(mapLineForward(change.after, text, hunk.startLine), lastLine);
+    // Pure deletions have no agent lines; anchor them to the line they sit on.
+    return { hunk, index, startLine, endLine: Math.min(startLine + Math.max(hunk.afterLines.length, 1) - 1, lastLine) };
+  });
+}
+
 const blockLenses: vscode.CodeLensProvider = {
   onDidChangeCodeLenses: codeLensesChanged.event,
   provideCodeLenses(document) {
     if (document.uri.scheme !== "file") return [];
     const change = pendingByPath().get(document.uri.fsPath);
     if (!change || change.previewOnly) return [];
-    const text = document.getText();
-    const lastLine = Math.max(document.lineCount - 1, 0);
-    return computeHunks(change.before, change.after).flatMap((hunk, index) => {
-      const line = Math.min(mapLineForward(change.after, text, hunk.startLine), lastLine);
-      const range = new vscode.Range(line, 0, line, 0);
+    const blocks = liveBlocks(change, document);
+    return blocks.flatMap(({ hunk, index, startLine }) => {
+      const range = new vscode.Range(startLine, 0, startLine, 0);
       const args = [change.path, index, hunk.startLine];
-      // CodeLens can't be styled, so colour comes from the emoji markers and
-      // the spacer lens keeps the two targets well apart.
-      return [
-        new vscode.CodeLens(range, { title: "🟩 $(check) Accept", tooltip: "Keep this agent change", command: "ocursor.acceptBlock", arguments: args }),
-        new vscode.CodeLens(range, { title: "\u2003\u2003\u2003", command: "" }),
-        new vscode.CodeLens(range, { title: "🟥 $(discard) Reject", tooltip: "Undo this agent change", command: "ocursor.rejectBlock", arguments: args }),
+      // CodeLens text can't be coloured, so the emoji markers carry the colour.
+      const lenses = [
+        new vscode.CodeLens(range, { title: `🟩 $(check) Keep ${KEEP_KEY}`, tooltip: "Keep this agent change", command: "ocursor.acceptBlock", arguments: args }),
+        new vscode.CodeLens(range, { title: `🟥 $(discard) Undo ${UNDO_KEY}`, tooltip: "Undo this agent change", command: "ocursor.rejectBlock", arguments: args }),
       ];
+      if (blocks.length > 1) {
+        lenses.push(
+          new vscode.CodeLens(range, { title: "$(arrow-down) Next", tooltip: "Go to the next agent change", command: "ocursor.nextBlock", arguments: [document.uri, index] }),
+          new vscode.CodeLens(range, { title: `${index + 1}/${blocks.length}`, tooltip: "Agent changes in this file", command: "" }),
+        );
+      }
+      return lenses;
     });
   },
 };
+
+function blockAtCursor(editor: vscode.TextEditor | undefined): { change: PendingChange; block: LiveBlock } | undefined {
+  if (!editor || editor.document.uri.scheme !== "file") return undefined;
+  const change = changeForEditor(editor);
+  if (!change || change.previewOnly) return undefined;
+  const line = editor.selection.active.line;
+  const block = liveBlocks(change, editor.document).find(b => line >= b.startLine && line <= b.endLine);
+  return block && { change, block };
+}
+
+/** Scopes the Keep/Undo shortcuts to the cursor sitting inside an agent block. */
+const IN_BLOCK_CONTEXT = "ocursor.cursorInAgentBlock";
+let publishedInBlock: boolean | undefined;
+function publishCursorContext() {
+  const inBlock = !!blockAtCursor(vscode.window.activeTextEditor);
+  if (inBlock === publishedInBlock) return;
+  publishedInBlock = inBlock;
+  void vscode.commands.executeCommand("setContext", IN_BLOCK_CONTEXT, inBlock);
+}
+
+function reviewBlockAtCursor(reject: boolean) {
+  const found = blockAtCursor(vscode.window.activeTextEditor);
+  if (!found) return;
+  return reviewBlock(found.change.path, found.block.index, found.block.hunk.startLine, reject);
+}
+
+/** Move to the agent block after `fromIndex` (or after the cursor), wrapping around. */
+function revealNextBlock(uri?: vscode.Uri, fromIndex?: number) {
+  const editor = uri ? vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === uri.toString()) : vscode.window.activeTextEditor;
+  if (!editor) return;
+  const change = changeForEditor(editor);
+  if (!change || change.previewOnly) return;
+  const blocks = liveBlocks(change, editor.document);
+  if (!blocks.length) return;
+  const line = editor.selection.active.line;
+  const target = fromIndex !== undefined ? blocks[(fromIndex + 1) % blocks.length] : blocks.find(b => b.startLine > line) ?? blocks[0];
+  const position = new vscode.Position(target.startLine, 0);
+  editor.selection = new vscode.Selection(position, position);
+  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+}
 
 function blockStillCurrent(path: string, index: number, startLine: number): boolean {
   const change = pendingChanges.get(path);
@@ -351,6 +431,7 @@ async function sync() {
     if (editor.document.uri.scheme === "file") refreshEditor(editor);
   }
   publishChangedFilesContext();
+  publishCursorContext();
   codeLensesChanged.fire();
 }
 
@@ -389,6 +470,7 @@ export function registerInlineReview(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("ocursor.viewDiff", async (path: string, scope?: ChangeScope) => {
       await showInlineDiff(path, false, scope);
     }),
+    vscode.commands.registerCommand("ocursor.openChangedFile", (path: string) => openChangedFile(path)),
     // Editor title actions receive the editor's URI; the palette falls back to the active editor.
     vscode.commands.registerCommand("ocursor.acceptFileChanges", (uri?: vscode.Uri) => runReviewAction(async () => {
       const file = pendingPathFor(uri);
@@ -396,6 +478,11 @@ export function registerInlineReview(context: vscode.ExtensionContext) {
     })),
     vscode.commands.registerCommand("ocursor.acceptBlock", (path: string, index: number, startLine: number) => reviewBlock(path, index, startLine, false)),
     vscode.commands.registerCommand("ocursor.rejectBlock", (path: string, index: number, startLine: number) => reviewBlock(path, index, startLine, true)),
+    vscode.commands.registerCommand("ocursor.acceptBlockAtCursor", () => reviewBlockAtCursor(false)),
+    vscode.commands.registerCommand("ocursor.rejectBlockAtCursor", () => reviewBlockAtCursor(true)),
+    vscode.commands.registerCommand("ocursor.nextBlock", (uri?: vscode.Uri, fromIndex?: number) => revealNextBlock(uri, fromIndex)),
+    vscode.window.onDidChangeTextEditorSelection(() => publishCursorContext()),
+    vscode.window.onDidChangeActiveTextEditor(() => publishCursorContext()),
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, blockLenses),
     codeLensesChanged,
     vscode.commands.registerCommand("ocursor.acceptAllChanges", () => runReviewAction(() => pendingChanges.acceptAll())),
@@ -406,7 +493,7 @@ export function registerInlineReview(context: vscode.ExtensionContext) {
     })),
     addedDecoration,
     originalsChanged,
-    { dispose: () => { if (refreshTimer) clearTimeout(refreshTimer); if (typingTimer) clearTimeout(typingTimer); typingTimer = undefined; typedDocuments.clear(); publishedContext = undefined; } },
+    { dispose: () => { if (refreshTimer) clearTimeout(refreshTimer); if (typingTimer) clearTimeout(typingTimer); typingTimer = undefined; typedDocuments.clear(); publishedContext = undefined; publishedInBlock = undefined; } },
     { dispose: pendingChanges.onChange(scheduleSync) },
     vscode.window.onDidChangeVisibleTextEditors(() => {
       for (const editor of vscode.window.visibleTextEditors) {

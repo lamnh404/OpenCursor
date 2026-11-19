@@ -1035,6 +1035,7 @@ function ToolCardInner({ block, onImplement, onOpenSubagent, awaitingApproval }:
   // Edit cards always show their body — the diff has its own expander.
   const showBody = isEdit || open;
   const shellCmd = isShell ? String(i.command || meta.label || "") : "";
+  const shellPurpose = isShell && typeof i.description === "string" ? i.description.trim() : "";
   const shellParsed = isShell ? parseShellResult(block.result, shellCmd) : null;
 
   return (
@@ -1054,9 +1055,12 @@ function ToolCardInner({ block, onImplement, onOpenSubagent, awaitingApproval }:
             {isEdit ? <FileIcon path={i.path || ""} fallback={meta.icon} /> : <Icon name={meta.icon} />}
           </span>
           {isShell ? (
-            <span className="shell-prompt-line" title={shellCmd}>
-              <span className="shell-prompt">$</span>
-              <span className="shell-cmd">{shellCmd || "…"}</span>
+            <span className="shell-head-text">
+              <span className="shell-prompt-line" title={shellCmd}>
+                <span className="shell-prompt">$</span>
+                <span className="shell-cmd">{shellCmd || "…"}</span>
+              </span>
+              {shellPurpose && <span className="shell-purpose" title={shellPurpose}>{shellPurpose}</span>}
             </span>
           ) : (
             <span className="label">{meta.label}</span>

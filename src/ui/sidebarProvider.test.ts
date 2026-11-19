@@ -492,12 +492,12 @@ describe("live model availability in the sidebar", () => {
 });
 
 describe("durable host-owned follow-up queue", () => {
-  it("passes the selected conversation scope into native diff review", async () => {
-    const { host, b } = await fixture();
+  it("opens the real file for in-place review instead of a diff picker", async () => {
+    const { host } = await fixture();
     vi.mocked(pendingChanges.get).mockReturnValueOnce({ path: "file.ts", before: "before", after: "after", existedBefore: true });
     await host._showDiff("file.ts");
-    expect(pendingChanges.get).toHaveBeenCalledWith("file.ts", { conversationId: b.id });
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith("ocursor.viewDiff", "file.ts", { conversationId: b.id });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith("ocursor.openChangedFile", "file.ts");
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith("ocursor.viewDiff", expect.anything(), expect.anything());
   });
 
   it("reports the latest editing turn per file so the webview can scope message reverts", async () => {

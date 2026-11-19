@@ -871,6 +871,29 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 	flex: 0 0 auto;
 	align-items: center;
 }
+.shell-head-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+/* Mirrors .subagent-card's surface, border and label weight so it reads as part of the same family. */
+.shell-purpose {
+	margin: var(--sp-2) 0 0 14px;
+	padding: var(--sp-3) var(--sp-5);
+	border: 1px solid var(--line-soft);
+	border-radius: var(--r-xl);
+	background: var(--surface-1);
+	color: var(--fg);
+	font-family: var(--vscode-font-family, inherit);
+	/* Slightly above --fs-md: 12px read as too small next to the command. */
+	font-size: 12.5px;
+	font-weight: 500;
+	line-height: 1.5;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
 .shell-prompt-line {
 	display: flex;
 	align-items: center;

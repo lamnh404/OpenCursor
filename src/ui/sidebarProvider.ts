@@ -1024,18 +1024,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage({ type: "pendingChanges", changes });
   }
 
-  /** Open VS Code's native diff between the original and current file contents. */
+  /**
+   * Open the real file for in-place review: changed lines are highlighted and
+   * each agent block gets Accept/Reject lenses, so no diff picker is needed.
+   */
   private async _showDiff(relPath: string) {
-    const scope = this._activeId ? { conversationId: this._activeId } : undefined;
-    const change = scope ? pendingChanges.get(relPath, scope) : undefined;
-    if (!change) {
+    if (!pendingChanges.get(relPath)) {
       await this._openFile(relPath);
       return;
     }
     try {
-      await vscode.commands.executeCommand("ocursor.viewDiff", relPath, scope);
+      await vscode.commands.executeCommand("ocursor.openChangedFile", relPath);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`OpenCursor: Could not show diff: ${err?.message}`);
+      logError("ui.open-changed-file", err, { path: relPath });
+      await this._openFile(relPath);
     }
   }
 
