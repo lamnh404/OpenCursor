@@ -32,7 +32,10 @@ vi.mock("./provider", () => ({ streamChat: async function* (request: StreamChatO
 } }));
 vi.mock("vscode", () => ({ workspace: {
   get workspaceFolders() { return [{ uri: { fsPath: fixture.root } }]; }, textDocuments: [],
-}, window: { tabGroups: { all: [] } }, languages: { getDiagnostics: () => [] }, DiagnosticSeverity: { Warning: 1, Error: 0 } }));
+}, window: { tabGroups: { all: [] } }, languages: { getDiagnostics: () => [] }, DiagnosticSeverity: { Warning: 1, Error: 0 },
+  // Pulled in transitively (e.g. oauth status events); constructed at import time.
+  EventEmitter: class { event = () => ({ dispose() {} }); fire() {} dispose() {} },
+}));
 vi.mock("../context/cursorContext", () => ({ buildUserInfoBlock: async () => "", buildOpenFilesBlock: async () => "" }));
 vi.mock("../logging", () => ({ logError: vi.fn(), logInfo: vi.fn() }));
 

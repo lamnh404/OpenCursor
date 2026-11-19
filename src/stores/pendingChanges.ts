@@ -153,7 +153,9 @@ export class PendingChangesStore {
       this.garbage.unshift(...garbage);
       throw error;
     }
-    for (const backup of garbage) void fs.rm(backup, { force: true }).catch(() => {});
+    // Awaited (best-effort) so flush() really means "on disk": orphaned backups
+    // are no longer referenced by the journal, but callers rely on them being gone.
+    await Promise.all(garbage.map(backup => fs.rm(backup, { force: true }).catch(() => {})));
   }
   /** Resolves once every change made so far is durable; rejects if the latest save failed. */
   async flush(): Promise<void> { await this.chain; if (this.scheduled) await this.scheduled; }

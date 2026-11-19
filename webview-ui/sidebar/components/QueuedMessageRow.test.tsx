@@ -15,6 +15,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueuedMessageRow, type QueuedMessageRowProps } from "./QueuedMessageRow";
 import { setMotionPreference } from "../../shared/motionPreference";
 
+// QueuedMessageRow imports Tool, which acquires the webview API at module load.
+vi.mock("../../shared/vscode", () => ({ vscode: { postMessage: vi.fn() } }));
+
 let root: Root, container: HTMLDivElement, props: QueuedMessageRowProps;
 const trigger = () => container.querySelector<HTMLButtonElement>('[aria-label="More queued message actions"]')!;
 const menu = () => document.querySelector<HTMLDivElement>(".queue-menu");

@@ -246,12 +246,17 @@ export async function installedPluginSkills(directory = defaultPluginDirectory()
   const plugins = await new LocalPluginManager(directory).list();
   const skills: { name: string; description: string; path: string; pluginId: string }[] = [];
   for (const plugin of plugins.filter((entry) => entry.enabled)) {
+    // Compare canonical paths on both sides: the plugin directory itself may sit
+    // behind a symlink (macOS /var -> /private/var), and a raw-vs-real mismatch
+    // would wrongly reject every skill as escaping the plugin.
+    let pluginRoot: string;
+    try { pluginRoot = await fs.realpath(plugin.directory); } catch { continue; }
     const visit = async (relative: string, depth: number) => {
       const dir = path.join(plugin.directory, relative);
       if (!isWithinDirectory(plugin.directory, dir)) return;
       let canonical: string;
       try { canonical = await fs.realpath(dir); } catch { return; }
-      if (!isWithinDirectory(plugin.directory, canonical)) return;
+      if (!isWithinDirectory(pluginRoot, canonical)) return;
       try {
         const file = path.join(canonical, "SKILL.md");
         if ((await fs.stat(file)).size > 256 * 1024) return;
