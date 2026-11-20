@@ -735,6 +735,49 @@ button.working-head:focus-visible { outline: 1px solid var(--control-focus-borde
 	border-end-end-radius: var(--r-sm);
 	color: var(--fg-dim);
 }
+/* Callouts: `> [!EVIDENCE] Title` boxes used for structured reasoning answers. */
+.markdown-content .callout {
+	--callout: var(--fg-dim);
+	margin: var(--sp-5) 0;
+	padding: var(--sp-4) var(--sp-6);
+	border: 1px solid color-mix(in srgb, var(--callout) 28%, transparent);
+	border-inline-start: 3px solid var(--callout);
+	border-radius: var(--r-md);
+	background: color-mix(in srgb, var(--callout) 7%, transparent);
+}
+.markdown-content .callout-info { --callout: var(--vscode-charts-blue, #4f9fe6); }
+.markdown-content .callout-success { --callout: var(--green); }
+.markdown-content .callout-warn { --callout: var(--warn); }
+.markdown-content .callout-error { --callout: var(--error); }
+.markdown-content .callout-accent { --callout: var(--purple); }
+.markdown-content .callout-title {
+	margin-bottom: var(--sp-2);
+	color: var(--callout);
+	font-size: var(--fs-sm, 11px);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+.markdown-content .callout-body > :first-child { margin-top: 0; }
+.markdown-content .callout-body > :last-child { margin-bottom: 0; }
+.markdown-content .callout-body table { margin: var(--sp-3) 0; }
+.markdown-content .status-pill {
+	--pill: var(--fg-dim);
+	display: inline-block;
+	padding: 0 var(--sp-3);
+	border: 1px solid color-mix(in srgb, var(--pill) 35%, transparent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--pill) 12%, transparent);
+	color: var(--pill);
+	font-size: 0.92em;
+	font-weight: 600;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+.markdown-content .status-supported { --pill: var(--green); }
+.markdown-content .status-ruled-out { --pill: var(--error); }
+.markdown-content .status-less-likely { --pill: var(--warn); }
+.markdown-content .status-untested { --pill: var(--fg-dim); }
 .markdown-content img {
 	max-width: 100%;
 	border-radius: var(--r-md);

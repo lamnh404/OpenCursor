@@ -193,6 +193,36 @@ it("only renders the changed trailing block while a response streams", async () 
   expect(parse.mock.calls.length - initial).toBe(20);
 });
 
+it("renders reasoning callouts as titled boxes and leaves plain quotes alone", async () => {
+  const { renderMarkdown } = await import("./markdown");
+  const doc = htmlDocument(renderMarkdown("> [!EVIDENCE] What we checked\n> 1. Log says port **3000**\n\n> [!CONCLUSION]\n> Port mismatch.\n\n> just a quote"));
+  const boxes = doc.querySelectorAll(".callout");
+  expect(boxes).toHaveLength(2);
+  expect(boxes[0].classList).toContain("callout-info");
+  expect(boxes[0].querySelector(".callout-title")?.textContent).toBe("What we checked");
+  expect(boxes[0].querySelector(".callout-body li strong")?.textContent).toBe("3000");
+  expect(boxes[1].querySelector(".callout-title")?.textContent).toBe("Conclusion");
+  expect(boxes[1].querySelector(".callout-body")?.textContent?.trim()).toBe("Port mismatch.");
+  expect(doc.querySelector("blockquote")?.textContent?.trim()).toBe("just a quote");
+  expect(renderMarkdown("> [!BOGUS] x")).toContain("<blockquote");
+});
+
+it("colours hypothesis status cells without touching other cells", async () => {
+  const { renderMarkdown } = await import("./markdown");
+  const doc = htmlDocument(renderMarkdown([
+    "| Explanation | Status |", "| --- | --- |",
+    "| Port mismatch | **Supported** by logs |", "| DB down | Ruled out: queries succeed |",
+    "| DNS | Less likely |", "| Policy | Chưa kiểm tra |", "| Likelihood of rain | n/a |",
+  ].join("\n")));
+  const pills = Array.from(doc.querySelectorAll(".status-pill"), pill => [pill.className, pill.textContent]);
+  expect(pills).toEqual([
+    ["status-pill status-supported", "Supported"], ["status-pill status-ruled-out", "Ruled out"],
+    ["status-pill status-less-likely", "Less likely"], ["status-pill status-untested", "Chưa kiểm tra"],
+  ]);
+  expect(doc.querySelector("tbody tr:nth-child(2) td:last-child")?.textContent).toBe("Ruled out: queries succeed");
+  expect(doc.querySelector("th .status-pill")).toBeNull();
+});
+
 it("keeps raw HTML spanning blocks on the whole-document path", async () => {
   const { renderMarkdown, renderWhole } = await import("./markdown");
   const source = "<details>\n\nInside **details**\n\n</details>\n\n<b>open\n\nnext paragraph";

@@ -28,8 +28,62 @@ const marked = new Marked({
       // The wrapper lets MarkdownView pin a copy button that doesn't scroll with the code.
       return `<div class="code-block"><pre><code class="language-${language}">${content}</code></pre></div>\n`;
     },
+    blockquote({ tokens }) {
+      const body = this.parser.parse(tokens);
+      return renderCallout(body) ?? `<blockquote>\n${body}</blockquote>\n`;
+    },
+    tablecell(token) {
+      const tag = token.header ? "th" : "td";
+      const align = token.align ? ` align="${token.align}"` : "";
+      const content = this.parser.parseInline(token.tokens);
+      return `<${tag}${align}>${token.header ? content : statusPill(content)}</${tag}>\n`;
+    },
   },
 });
+
+// GitHub-style alerts plus reasoning sections, e.g. `> [!EVIDENCE] Optional title`.
+// Values are [css variant, default title]; kinds outside this map stay plain blockquotes.
+const CALLOUTS: Record<string, readonly [string, string]> = {
+  note: ["info", "Note"], info: ["info", "Info"], tip: ["success", "Tip"],
+  important: ["accent", "Important"], warning: ["warn", "Warning"], caution: ["error", "Caution"],
+  conclusion: ["success", "Conclusion"], evidence: ["info", "Evidence"], steps: ["info", "Investigation steps"],
+  alternatives: ["accent", "Alternatives considered"], reasoning: ["accent", "Why this conclusion"],
+  uncertainty: ["warn", "Remaining uncertainty"], next: ["neutral", "Next check"], risk: ["error", "Risk"],
+};
+
+function renderCallout(inner: string): string | undefined {
+  const match = /^<p>\[!([a-z]+)\][ \t]*([^<\n]*)(?:<br>\n?|\n)?/i.exec(inner);
+  const kind = match && CALLOUTS[match[1].toLowerCase()];
+  if (!match || !kind) return undefined;
+  let body = inner.slice(match[0].length);
+  // The marker sat alone in the first paragraph: drop the now-empty paragraph.
+  if (body.startsWith("</p>")) body = body.slice(4).replace(/^\n/, "");
+  else body = "<p>" + body;
+  const title = match[2].trim() || kind[1];
+  return `<div class="callout callout-${kind[0]}"><div class="callout-title">${title}</div><div class="callout-body">${body}</div></div>\n`;
+}
+
+// Hypothesis statuses written by the reasoning skill (English or Vietnamese).
+// Order matters: "less likely" must win over "likely".
+const STATUSES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^(?:ruled out|excluded|rejected|đã loại trừ|loại trừ)(?!\p{L})/iu, "ruled-out"],
+  [/^(?:less likely|unlikely|ít khả năng)(?!\p{L})/iu, "less-likely"],
+  [/^(?:untested|unresolved|unknown|unverified|chưa kiểm tra|chưa xác định|chưa rõ)(?!\p{L})/iu, "untested"],
+  [/^(?:supported|confirmed|likely|đã xác nhận|khả năng cao)(?!\p{L})/iu, "supported"],
+];
+
+/** Turn a leading status word in a table cell into a coloured pill; bold status text is pilled whole. */
+function statusPill(html: string): string {
+  const bold = /^\s*<strong>([^<]+)<\/strong>/.exec(html);
+  const lead = bold ? bold[1].trim() : html.trimStart();
+  for (const [pattern, status] of STATUSES) {
+    const match = pattern.exec(lead);
+    if (!match) continue;
+    const [label, rest] = bold ? [bold[1].trim(), html.slice(bold[0].length)] : [match[0], lead.slice(match[0].length)];
+    return `<span class="status-pill status-${status}">${label}</span>${rest}`;
+  }
+  return html;
+}
 
 // Allowlist sanitiser. AI output is semi-trusted and marked passes raw HTML
 // through, so rebuild the DOM keeping only markdown's own elements and safe
